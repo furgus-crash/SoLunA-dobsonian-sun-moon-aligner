@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SoLunA Astronomy Align - WitMotion Solar & Lunar Finder</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- PWA / Apple Touch Icon Dynamic SVG Payload -->
+    <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='120' fill='%230f172a'/><path d='M256 32 C132.3 32 32 132.3 32 256 s100.3 224 224 224 Z' fill='%23f59e0b'/><path d='M256 32 C379.7 32 480 132.3 480 256 s-100.3 224-224 224 Z' fill='%2338bdf8'/><path d='M256 96 A160 160 0 0 1 256 416 Z' fill='%230284c7'/><circle cx='256' cy='256' r='140' fill='none' stroke='%23f8fafc' stroke-width='16'/></svg>">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b0f19;
+            color: #f1f5f9;
+            touch-action: manipulation;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        /* Target Reticle Radar Viewport */
+        .reticle-container {
+            position: relative;
+            width: 100%;
+            max-width: 340px;
+            height: 340px;
+            margin: 0 auto;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(15,23,42,0.9) 0%, rgba(2,6,23,0.95) 100%);
+            border: 2px solid #334155;
+            box-shadow: 0 0 35px rgba(0,0,0,0.8), inset 0 0 25px rgba(0,0,0,0.8);
+            overflow: hidden;
+        }
+
+        /* Reticle Target Rings */
+        .reticle-ring {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            border: 1px dashed rgba(148, 163, 184, 0.25);
+            pointer-events: none;
+        }
+
+        /* Target Indicator / Bubble Point */
+        .reticle-bubble {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: all 0.08s ease-out;
+            box-shadow: 0 0 15px currentColor;
+        }
+
+        /* Pulsing Target Lock Effect */
+        @keyframes ringPulse {
+            0% { transform: translate(-50%, -50%) scale(0.95); opacity: 0.8; }
+            50% { transform: translate(-50%, -50%) scale(1.05); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(0.95); opacity: 0.8; }
+        }
+
+        .lock-pulse {
+            animation: ringPulse 1.2s infinite ease-in-out;
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+
+        /* LED Indicator Animations */
+        @keyframes ledBlinkRed {
+            0%, 100% { background-color: #ef4444; box-shadow: 0 0 12px #ef4444; }
+            50% { background-color: #450a0a; box-shadow: 0 0 2px #450a0a; }
+        }
+
+        .led-disconnected {
+            animation: ledBlinkRed 1s infinite;
+        }
+        .led-sun {
+            background-color: #f59e0b;
+            box-shadow: 0 0 14px #f59e0b;
+        }
+        .led-moon {
+            background-color: #38bdf8;
+            box-shadow: 0 0 14px #38bdf8;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-3 md:p-6 max-w-4xl mx-auto">
+
+    <!-- TOP HEADER / SYSTEM STATUS -->
+    <header class="bg-slate-900/80 backdrop-blur-md rounded-2xl p-4 border border-slate-800 shadow-lg mb-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            
+            <!-- Brand Title & Target Switcher -->
+            <div class="flex items-center space-x-3">
+                <div id="statusLed" class="w-4 h-4 rounded-full led-disconnected transition-all duration-300"></div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight tracking-wide text-slate-100 flex items-center gap-2">
+                        <span>SoLunA</span>
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">WT9011DCL</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Astronomy Alignment Assistant</p>
+                </div>
+            </div>
+
+            <!-- Target Selection Mode Switcher -->
+            <div class="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+                <button id="targetSunBtn" onclick="setTargetMode('SUN')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-amber-500/20 text-amber-400 border border-amber-500/40">
+                    <i data-lucide="sun" class="w-4 h-4"></i>
+                    <span>SUN</span>
+                </button>
+                <button id="targetMoonBtn" onclick="setTargetMode('MOON')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition-all">
+                    <i data-lucide="moon" class="w-4 h-4"></i>
+                    <span>MOON</span>
+                </button>
+            </div>
+
+            <!-- Quick Action Toggle Controls -->
+            <div class="flex items-center space-x-2">
+                <button id="audioToggleBtn" onclick="toggleAudio()" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" title="Toggle Audio Feedback">
+                    <i id="audioIcon" data-lucide="volume-2" class="w-4 h-4"></i>
+                </button>
+                <button id="hapticToggleBtn" onclick="toggleHaptics()" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" title="Toggle Vibrations">
+                    <i id="hapticIcon" data-lucide="smartphone-nfc" class="w-4 h-4"></i>
+                </button>
+                <button onclick="toggleGuideModal(true)" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 transition flex items-center gap-1.5 text-xs font-medium">
+                    <i data-lucide="book-open" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">Guide</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN DASHBOARD CONTENT -->
+    <main class="grid grid-cols-1 lg:grid-cols-12 gap-4 my-auto">
+
+        <!-- RETICLE & DIRECTIONAL VECTOR PANEL (LEFT/CENTER) -->
+        <section class="lg:col-span-7 bg-slate-900/50 backdrop-blur-md rounded-2xl p-5 border border-slate-800 shadow-xl flex flex-col items-center justify-center relative">
+            
+            <!-- Target Reticle Overlay Info -->
+            <div class="w-full flex justify-between items-center mb-3 text-xs font-mono text-slate-400 px-2">
+                <div class="flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-slate-600" id="reticleStatusDot"></span>
+                    <span id="reticleStatusText">STANDBY / NO BLE</span>
+                </div>
+                <div id="targetAltitudeStatus" class="font-bold text-slate-300">Target Alt: --°</div>
+            </div>
+
+            <!-- Visual Reticle Display -->
+            <div class="reticle-container flex items-center justify-center my-2" id="reticleFrame">
+                
+                <!-- Concentric Rings (Tolerance Zones) -->
+                <div class="reticle-ring w-[80%] h-[80%]"></div>
+                <div class="reticle-ring w-[50%] h-[50%]"></div>
+                <div class="reticle-ring w-[20%] h-[20%] border-amber-500/40" id="lockZoneRing"></div>
+
+                <!-- Center Crosshair -->
+                <div class="absolute w-full h-[1px] bg-slate-700/60"></div>
+                <div class="absolute h-full w-[1px] bg-slate-700/60"></div>
+                <div class="absolute w-3 h-3 rounded-full border border-slate-400/80"></div>
+
+                <!-- Directional Vector Arrow Line -->
+                <svg id="vectorSvg" class="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 340 340">
+                    <defs>
+                        <marker id="arrowHead" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b" id="arrowHeadPath"/>
+                        </marker>
+                    </defs>
+                    <line id="vectorLine" x1="170" y1="170" x2="170" y2="170" stroke="#f59e0b" stroke-width="3" stroke-dasharray="4" marker-end="url(#arrowHead)" opacity="0"/>
+                </svg>
+
+                <!-- Dynamic Tracker Bubble -->
+                <div id="reticleBubble" class="reticle-bubble bg-amber-500 text-amber-500 left-1/2 top-1/2 opacity-30"></div>
+            </div>
+
+            <!-- Handheld Operator Guidance Card -->
+            <div class="w-full mt-4 bg-slate-950/80 rounded-xl p-3 border border-slate-800/80 text-center">
+                <div class="text-xs text-amber-400 font-semibold uppercase tracking-wider mb-1 flex items-center justify-center gap-1.5">
+                    <i data-lucide="hand" class="w-3.5 h-3.5"></i>
+                    <span>Handheld Operator Guidance</span>
+                </div>
+                <div id="vectorInstruction" class="text-base font-bold text-slate-200">
+                    Stand Facing Target & Hold Phone Upright
+                </div>
+                <div class="text-[11px] text-slate-400 mt-1 leading-snug">
+                    Nudge the <span class="text-slate-200 font-medium">front opening</span> of the telescope in the direction the arrow points from your point of view.
+                </div>
+            </div>
+        </section>
+
+        <!-- SENSOR & SYSTEM CONTROL PANEL (RIGHT) -->
+        <section class="lg:col-span-5 flex flex-col gap-4">
+            
+            <!-- Sensor BLE Connection Box -->
+            <div class="bg-slate-900/50 backdrop-blur-md rounded-2xl p-5 border border-slate-800 shadow-xl">
+                <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
+                    <i data-lucide="bluetooth" class="w-4 h-4 text-blue-400"></i>
+                    <span>WitMotion WT9011DCL BLE</span>
+                </h2>
+
+                <div class="grid grid-cols-2 gap-2 mb-4">
+                    <button id="bleConnectBtn" onclick="connectWitMotion()" class="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 px-4 rounded-xl shadow-lg transition text-xs">
+                        <i data-lucide="power" class="w-4 h-4"></i>
+                        <span>Connect BLE</span>
+                    </button>
+                    <button onclick="zeroCalibrateScope()" class="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-2.5 px-4 rounded-xl border border-slate-700 transition text-xs" title="Calibrate zero offset to current scope orientation">
+                        <i data-lucide="target" class="w-4 h-4 text-amber-400"></i>
+                        <span>Sync / Zero</span>
+                    </button>
+                </div>
+
+                <!-- Sensor Angle Real-Time Data Grid -->
+                <div class="grid grid-cols-3 gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800/80 font-mono text-center">
+                    <div>
+                        <div class="text-[10px] text-slate-500 uppercase">Pitch (Alt)</div>
+                        <div id="sensorPitch" class="text-sm font-bold text-slate-200">0.0°</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-slate-500 uppercase">Roll</div>
+                        <div id="sensorRoll" class="text-sm font-bold text-slate-200">0.0°</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-slate-500 uppercase">Yaw (Az)</div>
+                        <div id="sensorYaw" class="text-sm font-bold text-slate-200">0.0°</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- GPS Location & Celestial Target Ephemeris -->
+            <div class="bg-slate-900/50 backdrop-blur-md rounded-2xl p-5 border border-slate-800 shadow-xl">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                        <i data-lucide="map-pin" class="w-4 h-4 text-emerald-400"></i>
+                        <span>GPS & Ephemeris</span>
+                    </h2>
+                    <button onclick="requestGPS()" class="text-xs bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded-lg text-emerald-400 border border-slate-700 flex items-center gap-1">
+                        <i data-lucide="locate-fixed" class="w-3 h-3"></i>
+                        <span id="gpsBtnText">Fix GPS</span>
+                    </button>
+                </div>
+
+                <!-- Coordinates Display -->
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800/80 space-y-2 text-xs font-mono">
+                    <div class="flex justify-between border-b border-slate-800/60 pb-1.5">
+                        <span class="text-slate-500">Observer GPS:</span>
+                        <span id="gpsDisplay" class="text-slate-300">37.7749° N, 122.4194° W</span>
+                    </div>
+                    <div class="flex justify-between border-b border-slate-800/60 pb-1.5">
+                        <span class="text-slate-500">Target Azimuth:</span>
+                        <span id="targetAzDisplay" class="text-amber-400 font-bold">0.0° (N)</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-500">Target Altitude:</span>
+                        <span id="targetAltDisplay" class="text-amber-400 font-bold">0.0°</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-time Error Offset Summary -->
+            <div class="bg-slate-900/50 backdrop-blur-md rounded-2xl p-4 border border-slate-800 shadow-xl flex justify-around text-center">
+                <div>
+                    <div class="text-[10px] text-slate-500 uppercase tracking-wider">AZIMUTH ERROR</div>
+                    <div id="azErrorDisplay" class="text-lg font-bold font-mono text-slate-200">0.00°</div>
+                </div>
+                <div class="border-r border-slate-800"></div>
+                <div>
+                    <div class="text-[10px] text-slate-500 uppercase tracking-wider">ALTITUDE ERROR</div>
+                    <div id="altErrorDisplay" class="text-lg font-bold font-mono text-slate-200">0.00°</div>
+                </div>
+                <div class="border-r border-slate-800"></div>
+                <div>
+                    <div class="text-[10px] text-slate-500 uppercase tracking-wider">TOTAL OFFSET</div>
+                    <div id="totalErrorDisplay" class="text-lg font-bold font-mono text-amber-400">0.00°</div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- FOOTER / CREDIT -->
+    <footer class="mt-4 text-center text-xs text-slate-600">
+        SoLunA Astronomy Align &bull; WitMotion Sensor Mount near Eyepiece &bull; Handheld Display Mode
+    </footer>
+
+    <!-- USER OPERATION GUIDE MODAL -->
+    <div id="guideModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl p-6">
+            
+            <div class="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="compass" class="w-6 h-6 text-amber-400"></i>
+                    <h3 class="text-lg font-bold text-slate-100">Handheld Phone & Telescope Alignment Guide</h3>
+                </div>
+                <button onclick="toggleGuideModal(false)" class="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="space-y-5 text-sm text-slate-300 leading-relaxed">
+                
+                <!-- KEY CONCEPT ALERT BOX -->
+                <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 space-y-1">
+                    <div class="font-bold flex items-center gap-2">
+                        <i data-lucide="smartphone" class="w-4 h-4 text-amber-400"></i>
+                        <span>Important: Handheld Phone Setup</span>
+                    </div>
+                    <p class="text-xs text-amber-300/90 leading-normal">
+                        The phone stays in <strong>your hand</strong> while the <strong>WitMotion WT9011DCL BLE sensor</strong> is mounted to the upper optical tube assembly near the eyepiece.
+                    </p>
+                </div>
+
+                <!-- STEP BY STEP WORKFLOW -->
+                <div>
+                    <h4 class="font-semibold text-slate-100 mb-2 flex items-center gap-2">
+                        <span class="w-5 h-5 rounded-full bg-slate-800 text-amber-400 text-xs flex items-center justify-center font-mono">1</span>
+                        Physical Operator Position
+                    </h4>
+                    <p class="text-xs text-slate-400 ml-7">
+                        Stand directly behind or beside the telescope, <strong>facing the direction the telescope tube is pointed</strong> (towards the general vicinity of the Sun or Moon).
+                    </p>
+                </div>
+
+                <div>
+                    <h4 class="font-semibold text-slate-100 mb-2 flex items-center gap-2">
+                        <span class="w-5 h-5 rounded-full bg-slate-800 text-amber-400 text-xs flex items-center justify-center font-mono">2</span>
+                        Holding the Phone
+                    </h4>
+                    <p class="text-xs text-slate-400 ml-7">
+                        Hold the phone upright in front of you naturally. Because you are facing the target, the top of the phone screen points toward the zenith sky and the sides match your physical left and right.
+                    </p>
+                </div>
+
+                <div>
+                    <h4 class="font-semibold text-slate-100 mb-2 flex items-center gap-2">
+                        <span class="w-5 h-5 rounded-full bg-slate-800 text-amber-400 text-xs flex items-center justify-center font-mono">3</span>
+                        Interpreting On-Screen Directions
+                    </h4>
+                    <ul class="text-xs text-slate-400 ml-7 space-y-1.5 list-disc list-inside">
+                        <li><strong class="text-slate-200">UP / DOWN:</strong> Physically tilt the <em>front opening</em> of the telescope tube higher towards the sky (Up) or lower towards the ground (Down).</li>
+                        <li><strong class="text-slate-200">LEFT / RIGHT:</strong> Push the <em>front opening</em> of the scope tube to your physical left or right as you face the target.</li>
+                        <li><strong class="text-slate-200">Vector Arrow:</strong> Push the front opening in the exact direction the arrow points until the bubble locks in the crosshair.</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h4 class="font-semibold text-slate-100 mb-2 flex items-center gap-2">
+                        <span class="w-5 h-5 rounded-full bg-slate-800 text-amber-400 text-xs flex items-center justify-center font-mono">4</span>
+                        Solar & Lunar Safety
+                    </h4>
+                    <p class="text-xs text-amber-400/90 ml-7">
+                        <strong>NEVER</strong> look directly at the Sun through an unfiltered telescope or finder scope. SoLunA allows you to acquire solar lock completely blind without ever putting your eye near an unshielded eyepiece.
+                    </p>
+                </div>
+
+            </div>
+
+            <div class="mt-6 pt-4 border-t border-slate-800 flex justify-end">
+                <button onclick="toggleGuideModal(false)" class="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition">
+                    Got It & Get Started
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        /* ===================================================================
+           STATE & CONFIGURATION
+           =================================================================== */
+        let activeTarget = 'SUN'; // 'SUN' or 'MOON'
+        let bleDevice = null;
+        let bleCharacteristic = null;
+        let isConnected = false;
+
+        // Observer GPS Coordinates (Default to San Francisco if no GPS)
+        let observerLat = 37.7749;
+        let observerLon = -122.4194;
+
+        // Current Live Scope Orientation (Deg)
+        let scopeAzimuth = 0;
+        let scopeAltitude = 0;
+        let sensorRoll = 0;
+
+        // Zero Calibration Offsets
+        let azOffset = 0;
+        let altOffset = 0;
+
+        // Target Celestial Coordinates
+        let targetAzimuth = 0;
+        let targetAltitude = 0;
+
+        // Audio & Haptic Feedback Toggles & Hysteresis States
+        let audioEnabled = true;
+        let hapticsEnabled = true;
+        let isLocked = false;
+        let lastLockBeepTime = 0;
+        let audioCtx = null;
+
+        /* ===================================================================
+           INIT & UI SETUP
+           =================================================================== */
+        window.onload = function() {
+            lucide.createIcons();
+            requestGPS();
+            setInterval(updateAstronomicalPositions, 1000);
+            updateTargetUI();
+        };
+
+        function toggleGuideModal(show) {
+            const modal = document.getElementById('guideModal');
+            if (show) {
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        function setTargetMode(mode) {
+            activeTarget = mode;
+            updateTargetUI();
+            updateAstronomicalPositions();
+            triggerHaptic([30]);
+        }
+
+        function updateTargetUI() {
+            const sunBtn = document.getElementById('targetSunBtn');
+            const moonBtn = document.getElementById('targetMoonBtn');
+            const statusLed = document.getElementById('statusLed');
+            const lockRing = document.getElementById('lockZoneRing');
+            const bubble = document.getElementById('reticleBubble');
+
+            if (activeTarget === 'SUN') {
+                sunBtn.className = "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-amber-500/20 text-amber-400 border border-amber-500/40";
+                moonBtn.className = "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition-all";
+                if (isConnected) statusLed.className = "w-4 h-4 rounded-full led-sun transition-all duration-300";
+                lockRing.className = "reticle-ring w-[20%] h-[20%] border-amber-500/40";
+                bubble.className = "reticle-bubble bg-amber-500 text-amber-500 left-1/2 top-1/2 opacity-30";
+                document.getElementById('arrowHeadPath').setAttribute('fill', '#f59e0b');
+                document.getElementById('vectorLine').setAttribute('stroke', '#f59e0b');
+            } else {
+                moonBtn.className = "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-sky-500/20 text-sky-400 border border-sky-500/40";
+                sunBtn.className = "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition-all";
+                if (isConnected) statusLed.className = "w-4 h-4 rounded-full led-moon transition-all duration-300";
+                lockRing.className = "reticle-ring w-[20%] h-[20%] border-sky-500/40";
+                bubble.className = "reticle-bubble bg-sky-400 text-sky-400 left-1/2 top-1/2 opacity-30";
+                document.getElementById('arrowHeadPath').setAttribute('fill', '#38bdf8');
+                document.getElementById('vectorLine').setAttribute('stroke', '#38bdf8');
+            }
+        }
+
+        /* ===================================================================
+           GPS & HIGH-PRECISION EPHEMERIS CALCULATIONS
+           =================================================================== */
+        function requestGPS() {
+            const gpsBtnText = document.getElementById('gpsBtnText');
+            gpsBtnText.textContent = "Fixing...";
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        observerLat = position.coords.latitude;
+                        observerLon = position.coords.longitude;
+                        document.getElementById('gpsDisplay').textContent = 
+                            `${Math.abs(observerLat).toFixed(4)}° ${observerLat >= 0 ? 'N' : 'S'}, ${Math.abs(observerLon).toFixed(4)}° ${observerLon >= 0 ? 'W' : 'E'}`;
+                        gpsBtnText.textContent = "GPS Locked";
+                        updateAstronomicalPositions();
+                    },
+                    (error) => {
+                        console.warn("GPS failed, falling back to default.", error);
+                        gpsBtnText.textContent = "GPS Default";
+                    },
+                    { enableHighAccuracy: true, timeout: 10000 }
+                );
+            } else {
+                gpsBtnText.textContent = "No GPS";
+            }
+        }
+
+        function updateAstronomicalPositions() {
+            const now = new Date();
+            let pos;
+            if (activeTarget === 'SUN') {
+                pos = calculateSunPosition(now, observerLat, observerLon);
+            } else {
+                pos = calculateMoonPosition(now, observerLat, observerLon);
+            }
+
+            targetAzimuth = pos.azimuth;
+            targetAltitude = pos.altitude;
+
+            document.getElementById('targetAzDisplay').textContent = `${targetAzimuth.toFixed(2)}° (${getCompassDirection(targetAzimuth)})`;
+            document.getElementById('targetAltDisplay').textContent = `${targetAltitude.toFixed(2)}°`;
+            document.getElementById('targetAltitudeStatus').textContent = `Target Alt: ${targetAltitude.toFixed(1)}°`;
+
+            renderReticleAndVector();
+        }
+
+        function getCompassDirection(deg) {
+            const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+            return dirs[Math.round(deg / 45) % 8];
+        }
+
+        // Ephemeris Math Helpers
+        function calculateSunPosition(date, lat, lon) {
+            const rad = Math.PI / 180;
+            const d = (date.getTime() / 86400000) - 10957.5; // Days since J2000
+            const L = (280.460 + 0.9856474 * d) % 360;
+            const g = ((357.528 + 0.9856003 * d) % 360) * rad;
+            const lambda = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * rad;
+            
+            const eps = (23.439 - 0.0000004 * d) * rad;
+            const alpha = Math.atan2(Math.cos(eps) * Math.sin(lambda), Math.cos(lambda));
+            const delta = Math.asin(Math.sin(eps) * Math.sin(lambda));
+
+            // Local Sidereal Time
+            const gmst = (18.697374558 + 24.06570982441908 * d) % 24;
+            const lst = ((gmst * 15) + lon) * rad;
+            const H = lst - alpha;
+
+            const latRad = lat * rad;
+            const alt = Math.asin(Math.sin(latRad) * Math.sin(delta) + Math.cos(latRad) * Math.cos(delta) * Math.cos(H));
+            let az = Math.atan2(-Math.sin(H), Math.tan(delta) * Math.cos(latRad) - Math.sin(latRad) * Math.cos(H));
+            
+            return {
+                azimuth: ((az / rad) + 360) % 360,
+                altitude: alt / rad
+            };
+        }
+
+        function calculateMoonPosition(date, lat, lon) {
+            // High-precision lunar orbital perturbation approximation
+            const rad = Math.PI / 180;
+            const d = (date.getTime() / 86400000) - 10957.5;
+            
+            const L = ((218.316 + 13.176396 * d) % 360) * rad;
+            const M = ((134.963 + 13.064993 * d) % 360) * rad;
+            const F = ((93.272 + 13.229350 * d) % 360) * rad;
+
+            const lambda = L + (6.289 * Math.sin(M)) * rad;
+            const beta = (5.128 * Math.sin(F)) * rad;
+
+            const eps = 23.439 * rad;
+            const alpha = Math.atan2(Math.sin(lambda) * Math.cos(eps) - Math.tan(beta) * Math.sin(eps), Math.cos(lambda));
+            const delta = Math.asin(Math.sin(beta) * Math.cos(eps) + Math.cos(beta) * Math.sin(eps) * Math.sin(lambda));
+
+            const gmst = (18.697374558 + 24.06570982441908 * d) % 24;
+            const lst = ((gmst * 15) + lon) * rad;
+            const H = lst - alpha;
+
+            const latRad = lat * rad;
+            const alt = Math.asin(Math.sin(latRad) * Math.sin(delta) + Math.cos(latRad) * Math.cos(delta) * Math.cos(H));
+            let az = Math.atan2(-Math.sin(H), Math.tan(delta) * Math.cos(latRad) - Math.sin(latRad) * Math.cos(H));
+
+            return {
+                azimuth: ((az / rad) + 360) % 360,
+                altitude: alt / rad
+            };
+        }
+
+        /* ===================================================================
+           WITMOTION WT9011DCL-BT50 BLE DECODER & SENSOR HANDLER
+           =================================================================== */
+        async function connectWitMotion() {
+            try {
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    filters: [
+                        { namePrefix: 'WT' },
+                        { namePrefix: 'Wit' },
+                        { namePrefix: 'HC' }
+                    ],
+                    optionalServices: ['0000ffe0-0000-1000-8000-00805f9b34fb', 0xFFE0]
+                });
+
+                const server = await bleDevice.gatt.connect();
+                const service = await server.getPrimaryService('0000ffe0-0000-1000-8000-00805f9b34fb');
+                bleCharacteristic = await service.getCharacteristic('0000ffe1-0000-1000-8000-00805f9b34fb');
+
+                await bleCharacteristic.startNotifications();
+                bleCharacteristic.addEventListener('characteristicvaluechanged', handleWitMotionPacket);
+
+                isConnected = true;
+                document.getElementById('bleConnectBtn').innerHTML = `<i data-lucide="check-circle" class="w-4 h-4"></i> Active`;
+                document.getElementById('bleConnectBtn').className = "flex items-center justify-center gap-2 bg-emerald-600 text-white font-semibold py-2.5 px-4 rounded-xl shadow-lg text-xs";
+                document.getElementById('reticleStatusText').textContent = "SENSOR ONLINE";
+                document.getElementById('reticleStatusDot').className = "w-2 h-2 rounded-full bg-emerald-400";
+                
+                updateTargetUI();
+                lucide.createIcons();
+            } catch (err) {
+                console.error("BLE Connection Error: ", err);
+                alert("Failed to connect to WitMotion BLE Sensor. Please verify Bluetooth is enabled.");
+            }
+        }
+
+        // Parse WitMotion standard packet format (0x55 0x61 Angle Packet)
+        function handleWitMotionPacket(event) {
+            const data = new Uint8Array(event.target.value.buffer);
+            
+            for (let i = 0; i < data.length - 10; i++) {
+                if (data[i] === 0x55 && data[i+1] === 0x61) {
+                    // Extract Roll, Pitch, Yaw (Signed 16-bit integers / 32768 * 180)
+                    let rawRoll = (data[i+3] << 8 | data[i+2]);
+                    let rawPitch = (data[i+5] << 8 | data[i+4]);
+                    let rawYaw = (data[i+7] << 8 | data[i+6]);
+
+                    if (rawRoll > 32767) rawRoll -= 65536;
+                    if (rawPitch > 32767) rawPitch -= 65536;
+                    if (rawYaw > 32767) rawYaw -= 65536;
+
+                    sensorRoll = (rawRoll / 32768.0) * 180.0;
+                    scopeAltitude = ((rawPitch / 32768.0) * 180.0) + altOffset;
+                    scopeAzimuth = (((rawYaw / 32768.0) * 180.0) + azOffset + 360) % 360;
+
+                    document.getElementById('sensorPitch').textContent = `${scopeAltitude.toFixed(1)}°`;
+                    document.getElementById('sensorRoll').textContent = `${sensorRoll.toFixed(1)}°`;
+                    document.getElementById('sensorYaw').textContent = `${scopeAzimuth.toFixed(1)}°`;
+
+                    renderReticleAndVector();
+                    break;
+                }
+            }
+        }
+
+        function zeroCalibrateScope() {
+            // Sets current sensor alignment as zero offset against target
+            azOffset = targetAzimuth - (scopeAzimuth - azOffset);
+            altOffset = targetAltitude - (scopeAltitude - altOffset);
+            triggerHaptic([50, 50, 50]);
+        }
+
+        /* ===================================================================
+           RETICLE RENDERING & VECTOR ARROW LOGIC
+           =================================================================== */
+        function renderReticleAndVector() {
+            // Calculate errors
+            let azError = targetAzimuth - scopeAzimuth;
+            
+            // Normalize Azimuth error to -180 to +180 range
+            if (azError > 180) azError -= 360;
+            if (azError < -180) azError += 360;
+
+            let altError = targetAltitude - scopeAltitude;
+            let totalError = Math.sqrt(azError * azError + altError * altError);
+
+            document.getElementById('azErrorDisplay').textContent = `${azError > 0 ? '+' : ''}${azError.toFixed(2)}°`;
+            document.getElementById('altErrorDisplay').textContent = `${altError > 0 ? '+' : ''}${altError.toFixed(2)}°`;
+            document.getElementById('totalErrorDisplay').textContent = `${totalError.toFixed(2)}°`;
+
+            // Screen Reticle Scale: 15 degrees maximum field of view
+            const maxFovDeg = 15.0;
+            const reticleRadiusPx = 140; // 280px active visual area inside 340px box
+
+            // Clamp bubble displacement to edge of reticle
+            let clampedAzErr = Math.max(-maxFovDeg, Math.min(maxFovDeg, azError));
+            let clampedAltErr = Math.max(-maxFovDeg, Math.min(maxFovDeg, altError));
+
+            let posX = 170 + (clampedAzErr / maxFovDeg) * reticleRadiusPx;
+            let posY = 170 - (clampedAltErr / maxFovDeg) * reticleRadiusPx; // Inverted Y axis for Altitude sky tilt
+
+            const bubble = document.getElementById('reticleBubble');
+            bubble.style.left = `${posX}px`;
+            bubble.style.top = `${posY}px`;
+            bubble.style.opacity = isConnected ? "1" : "0.3";
+
+            // Render Vector Arrow Line from Center (170,170) to Bubble (posX, posY)
+            const vectorLine = document.getElementById('vectorLine');
+            if (totalError > 0.3 && isConnected) {
+                vectorLine.setAttribute('x1', '170');
+                vectorLine.setAttribute('y1', '170');
+                vectorLine.setAttribute('x2', posX.toString());
+                vectorLine.setAttribute('y2', posY.toString());
+                vectorLine.setAttribute('opacity', '1');
+            } else {
+                vectorLine.setAttribute('opacity', '0');
+            }
+
+            // Generate Handheld Text Instructions
+            updateInstructionText(azError, altError, totalError);
+
+            // Handle Target Lock State & Tones with Hysteresis
+            checkLockState(totalError);
+        }
+
+        function updateInstructionText(azErr, altErr, totalErr) {
+            const instructionEl = document.getElementById('vectorInstruction');
+            
+            if (!isConnected) {
+                instructionEl.textContent = "Stand Facing Target & Hold Phone Upright";
+                return;
+            }
+
+            if (totalErr <= 0.4) {
+                instructionEl.innerHTML = `<span class="text-emerald-400 font-extrabold flex items-center justify-center gap-1.5"><i data-lucide="check-circle-2" class="w-5 h-5"></i> TARGET LOCKED IN EYEPIECE</span>`;
+                lucide.createIcons();
+                return;
+            }
+
+            let lrText = "";
+            let udText = "";
+
+            if (Math.abs(azErr) > 0.2) {
+                lrText = azErr > 0 ? "RIGHT" : "LEFT";
+            }
+            if (Math.abs(altErr) > 0.2) {
+                udText = altErr > 0 ? "UP" : "DOWN";
+            }
+
+            let nudgeDir = [udText, lrText].filter(Boolean).join(" & ");
+            instructionEl.innerHTML = `Nudge Scope Front Opening: <span class="text-amber-400 font-extrabold underline">${nudgeDir}</span>`;
+        }
+
+        /* ===================================================================
+           AUDIO FEEDBACK & HAPTICS (LOCK / HYSTERESIS)
+           =================================================================== */
+        function checkLockState(totalErr) {
+            // Hysteresis window: Lock at <= 0.4°, unlock at > 0.8°
+            if (!isLocked && totalErr <= 0.4) {
+                isLocked = true;
+                triggerLockAcquired();
+            } else if (isLocked && totalErr > 0.8) {
+                isLocked = false;
+                triggerLockLost();
+            }
+
+            // Continuous proximity audio beeping when approaching alignment
+            if (audioEnabled && isConnected && !isLocked && totalErr < 8.0) {
+                const now = Date.now();
+                const interval = Math.max(100, totalErr * 180); // Faster beeps as target gets closer
+                if (now - lastLockBeepTime > interval) {
+                    playBeep(600 + (8.0 - totalErr) * 80, 0.04);
+                    lastLockBeepTime = now;
+                }
+            }
+        }
+
+        function triggerLockAcquired() {
+            document.getElementById('reticleFrame').classList.add('lock-pulse');
+            triggerHaptic([80, 60, 80, 60, 150]);
+            if (audioEnabled) {
+                playLockToneSequence();
+            }
+        }
+
+        function triggerLockLost() {
+            document.getElementById('reticleFrame').classList.remove('lock-pulse');
+            triggerHaptic([200]);
+        }
+
+        function toggleAudio() {
+            audioEnabled = !audioEnabled;
+            const btn = document.getElementById('audioToggleBtn');
+            btn.className = audioEnabled ? 
+                "p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" :
+                "p-2.5 rounded-xl bg-red-900/40 text-red-400 border border-red-800 transition";
+        }
+
+        function toggleHaptics() {
+            hapticsEnabled = !hapticsEnabled;
+            const btn = document.getElementById('hapticToggleBtn');
+            btn.className = hapticsEnabled ? 
+                "p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" :
+                "p-2.5 rounded-xl bg-red-900/40 text-red-400 border border-red-800 transition";
+            if (hapticsEnabled) triggerHaptic([40]);
+        }
+
+        function triggerHaptic(pattern) {
+            if (hapticsEnabled && "vibrate" in navigator) {
+                navigator.vibrate(pattern);
+            }
+        }
+
+        function playBeep(freq, duration) {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {
+                console.warn("Audio Context playback error", e);
+            }
+        }
+
+        function playLockToneSequence() {
+            // Three rapid ascending chirps for positive target lock confirmation
+            playBeep(880, 0.08);
+            setTimeout(() => playBeep(1174.66, 0.08), 90);
+            setTimeout(() => playBeep(1760, 0.15), 180);
+        }
+    </script>
+</body>
+</html>
