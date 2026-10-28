@@ -2,382 +2,931 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SoLunA - Solar & Lunar Alignment</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>SoLunA - Solar & Lunar Telescope Alignment</title>
     <style>
         :root {
             --bg-color: #0b0f19;
             --card-bg: #131c2e;
-            --accent-orange: #ff9f0a;
-            --accent-blue: #0a84ff;
-            --text-main: #f5f5f7;
-            --text-muted: #8e8e93;
-            --green: #30d158;
-            --border: #2c2c2e;
+            --border-color: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-sun: #f59e0b;
+            --accent-moon: #38bdf8;
+            --danger: #ef4444;
+            --success: #22c55e;
         }
-        body {
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
             background-color: var(--bg-color);
             color: var(--text-main);
-            margin: 0;
             padding: 16px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .container {
-            width: 100%;
-            max-width: 450px;
+            max-width: 480px;
+            margin: 0 auto;
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
             gap: 16px;
         }
-        .card {
-            background-color: var(--card-bg);
-            border: 1px solid var(--border);
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            padding: 12px 16px;
+            border-radius: 14px;
+        }
+
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: conic-gradient(var(--accent-sun) 0deg 180deg, var(--accent-moon) 180deg 360deg);
+            border: 2px solid var(--text-main);
+        }
+
+        h1 {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .toggle-group {
+            display: flex;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 3px;
+        }
+
+        .mode-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: 600;
             border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .mode-btn.active-sun {
+            background: var(--accent-sun);
+            color: #000;
+        }
+
+        .mode-btn.active-moon {
+            background: var(--accent-moon);
+            color: #000;
+        }
+
+        .reticle-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+
+        .canvas-container {
+            position: relative;
+            width: 260px;
+            height: 260px;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .status-indicator-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .led-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--danger);
+            box-shadow: 0 0 8px var(--danger);
+            transition: background 0.3s ease;
+        }
+
+        .led-dot.locked {
+            box-shadow: 0 0 10px currentColor;
+        }
+
+        @keyframes pulse-red {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.3; transform: scale(0.85); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .flashing-red {
+            animation: pulse-red 1s infinite ease-in-out;
+            background: var(--danger) !important;
+        }
+
+        .guidance-banner {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 12px;
+            padding: 12px 16px;
+            text-align: center;
+            margin-top: 14px;
+            width: 100%;
+        }
+
+        .guidance-banner.moon-mode {
+            background: rgba(56, 189, 248, 0.1);
+            border-color: rgba(56, 189, 248, 0.3);
+        }
+
+        .guidance-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--accent-sun);
+            font-weight: 700;
+            margin-bottom: 3px;
+        }
+
+        .moon-mode .guidance-title {
+            color: var(--accent-moon);
+        }
+
+        .guidance-instruction {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .control-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
             padding: 16px;
             display: flex;
             flex-direction: column;
             gap: 12px;
         }
-        .header-row {
+
+        .card-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-        }
-        h1 {
-            font-size: 20px;
-            margin: 0;
-        }
-        .btn {
-            background-color: var(--green);
-            color: #000;
-            border: none;
-            border-radius: 10px;
-            padding: 12px 16px;
+            font-size: 14px;
             font-weight: 600;
-            font-size: 15px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        button.action-btn {
+            flex: 1;
+            background: #1e293b;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 12px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
-            flex: 1;
+            transition: all 0.2s;
         }
-        .btn-secondary {
-            background-color: #2c2c2e;
-            color: var(--text-main);
+
+        button.action-btn:active {
+            transform: scale(0.98);
         }
-        .btn-row {
-            display: flex;
-            gap: 10px;
+
+        button.primary-btn {
+            background: #2563eb;
+            border-color: #3b82f6;
+            color: #fff;
         }
-        .radar-container {
-            position: relative;
-            width: 100%;
-            aspect-ratio: 1;
-            background: radial-gradient(circle, #1c2538 0%, #0f172a 100%);
-            border-radius: 50%;
-            border: 2px solid var(--border);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
+
+        button.active-toggle {
+            background: var(--success);
+            border-color: #4ade80;
+            color: #000;
         }
-        /* Radar Grid Lines */
-        .radar-container::before {
-            content: '';
-            position: absolute;
-            width: 70%;
-            height: 70%;
-            border: 1px dashed rgba(255,255,255,0.15);
-            border-radius: 50%;
-        }
-        .radar-crosshair-h {
-            position: absolute;
-            width: 100%;
-            height: 1px;
-            background-color: rgba(255,255,255,0.15);
-        }
-        .radar-crosshair-v {
-            position: absolute;
-            height: 100%;
-            width: 1px;
-            background-color: rgba(255,255,255,0.15);
-        }
-        .target-dot {
-            position: absolute;
-            width: 24px;
-            height: 24px;
-            background-color: var(--accent-orange);
-            border-radius: 50%;
-            box-shadow: 0 0 10px var(--accent-orange);
-            transform: translate(-50%, -50%);
-            transition: transform 0.1s linear;
-        }
-        .center-reticle {
-            position: absolute;
-            width: 16px;
-            height: 16px;
-            border: 2px solid var(--accent-orange);
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-            left: 50%;
-            top: 50%;
-        }
-        .telemetry-grid {
+
+        .sensor-readouts {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 8px;
             text-align: center;
-        }
-        .telemetry-box {
-            background: rgba(0,0,0,0.2);
-            padding: 8px;
-            border-radius: 8px;
-        }
-        .telemetry-label {
-            font-size: 11px;
-            color: var(--text-muted);
-            margin-bottom: 4px;
-        }
-        .telemetry-value {
-            font-size: 15px;
-            font-weight: 600;
-        }
-        .status-text {
-            text-align: center;
-            font-size: 13px;
-            color: var(--accent-orange);
-            font-weight: 500;
-        }
-        .guidance-box {
-            background: rgba(255, 159, 10, 0.1);
-            border: 1px solid rgba(255, 159, 10, 0.3);
-            border-radius: 10px;
+            background: var(--bg-color);
             padding: 10px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+        }
+
+        .readout-box .label {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .readout-box .value {
+            font-size: 16px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            margin-top: 2px;
+        }
+
+        .data-grid {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px 16px;
+            font-size: 13px;
+        }
+
+        .data-grid .label {
+            color: var(--text-muted);
+        }
+
+        .data-grid .val {
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+        }
+
+        .error-display {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            background: var(--bg-color);
+            padding: 10px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
             text-align: center;
         }
-        .guidance-title {
-            font-size: 10px;
-            letter-spacing: 1px;
-            color: var(--accent-orange);
-            font-weight: 700;
-            margin-bottom: 4px;
+
+        .error-box .err-label {
+            font-size: 9px;
+            color: var(--text-muted);
+            text-transform: uppercase;
         }
-        .guidance-msg {
-            font-size: 14px;
+
+        .error-box .err-val {
+            font-size: 15px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            margin-top: 2px;
+        }
+
+        details {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 14px 16px;
+            font-size: 13px;
+        }
+
+        summary {
             font-weight: 600;
+            cursor: pointer;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .guide-content {
+            margin-top: 12px;
+            line-height: 1.5;
+            color: var(--text-muted);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .guide-content strong {
+            color: var(--text-main);
         }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <!-- Top Bar -->
-    <div class="card header-row">
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#0a84ff"/><path d="M12 2a10 10 0 0 1 10 10h-10V2z" fill="#ff9f0a"/></svg>
+    <header>
+        <div class="logo-area">
+            <div class="logo-icon" id="appLogoIcon"></div>
             <h1>SoLunA</h1>
         </div>
-        <div style="display: flex; gap: 6px;">
-            <button class="btn" style="padding: 8px 12px; font-size: 13px;" id="modeSun">Sun</button>
-            <button class="btn btn-secondary" style="padding: 8px 12px; font-size: 13px;" id="modeMoon">Moon</button>
+        <div class="toggle-group">
+            <button class="mode-btn active-sun" id="sunBtn" onclick="setMode('sun')">☀️ Sun</button>
+            <button class="mode-btn" id="moonBtn" onclick="setMode('moon')">🌙 Moon</button>
+        </div>
+    </header>
+
+    <!-- Target Reticle & Guidance Card -->
+    <div class="reticle-card">
+        <div class="canvas-container">
+            <canvas id="reticleCanvas" width="300" height="300"></canvas>
+        </div>
+        <div class="status-indicator-container">
+            <div class="led-dot flashing-red" id="statusLed"></div>
+            <span id="statusText">Aligning Scope...</span>
+        </div>
+        
+        <div class="guidance-banner" id="guidanceBanner">
+            <div class="guidance-title" id="guidanceTitle">Handheld Operator Guidance</div>
+            <div class="guidance-instruction" id="guidanceInstruction">Stand facing target & hold phone upright</div>
         </div>
     </div>
 
-    <!-- Radar Display Card -->
-    <div class="card">
-        <div class="radar-container" id="radarArea">
-            <div class="radar-crosshair-h"></div>
-            <div class="radar-crosshair-v"></div>
-            <div class="center-reticle"></div>
-            <div class="target-dot" id="targetDot" style="left: 30%; top: 50%;"></div>
+    <!-- WitMotion BLE Control & Readout -->
+    <div class="control-card">
+        <div class="card-header">
+            <span>WitMotion WT9011DCL BLE</span>
+            <span id="bleStatus" style="font-size: 11px; color: var(--danger);">DISCONNECTED</span>
         </div>
-        <div class="status-text" id="statusText">● Aligning Scope...</div>
-        
-        <div class="guidance-box">
-            <div class="guidance-title">HANDHELD OPERATOR GUIDANCE</div>
-            <div class="guidance-msg" id="guidanceMsg">Nudge front opening: RIGHT</div>
+        <div class="button-row">
+            <button class="action-btn primary-btn" id="connectBleBtn" onclick="toggleBLE()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6.5 6.5l11 11L12 23V1l5.5 5.5-11 11"/></svg>
+                <span id="bleBtnText">Connect BLE</span>
+            </button>
+            <button class="action-btn" onclick="syncZero()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                Sync / Zero
+            </button>
+        </div>
+        <div class="sensor-readouts">
+            <div class="readout-box">
+                <div class="label">Pitch (Alt)</div>
+                <div class="value" id="valPitch">0.0°</div>
+            </div>
+            <div class="readout-box">
+                <div class="label">Roll</div>
+                <div class="value" id="valRoll">0.0°</div>
+            </div>
+            <div class="readout-box">
+                <div class="label">Yaw (Az)</div>
+                <div class="value" id="valYaw">0.0°</div>
+            </div>
         </div>
     </div>
 
-    <!-- Bluetooth Control Card -->
-    <div class="card">
-        <div class="header-row">
-            <span style="font-size: 13px; font-weight: 600; color: var(--text-muted);" id="btDeviceName">WITMOTION WT9011DCL BLE</span>
-            <span style="font-size: 13px; font-weight: 600; color: var(--green);" id="btStatus">DISCONNECTED</span>
-        </div>
-        <div class="btn-row">
-            <button class="btn" id="btConnectBtn" style="background-color: var(--green);">Connect Sensor</button>
-            <button class="btn btn-secondary" id="btZeroBtn">⊙ Sync / Zero</button>
-        </div>
-        
-        <div class="telemetry-grid">
-            <div class="telemetry-box">
-                <div class="telemetry-label">PITCH (ALT)</div>
-                <div class="telemetry-value" id="valPitch">0.0°</div>
-            </div>
-            <div class="telemetry-box">
-                <div class="telemetry-label">ROLL</div>
-                <div class="telemetry-value" id="valRoll">0.0°</div>
-            </div>
-            <div class="telemetry-box">
-                <div class="telemetry-label">YAW (AZ)</div>
-                <div class="telemetry-value" id="valYaw">0.0°</div>
-            </div>
+    <!-- Audio & Haptic Feedback Control -->
+    <div class="control-card" style="padding: 12px 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Lock / Drift Tone</div>
+            <button class="action-btn" id="audioToggleBtn" onclick="toggleAudioFeedback()" style="padding: 8px 14px; font-size: 12px; width: auto;">
+                🔊 Tone: OFF
+            </button>
         </div>
     </div>
 
     <!-- GPS & Ephemeris Card -->
-    <div class="card">
-        <div class="header-row">
-            <span style="font-size: 13px; font-weight: 600; color: var(--text-muted);">GPS & EPHEMERIS</span>
-            <span style="font-size: 13px; font-weight: 600; color: var(--accent-orange);">GPS LOCKED</span>
+    <div class="control-card">
+        <div class="card-header">
+            <span>GPS & Ephemeris</span>
+            <span id="gpsStatusBadge" style="font-size: 11px; color: var(--accent-sun);">Acquiring GPS...</span>
         </div>
-        <div style="display: flex; justify-content: space-between; font-size: 14px;">
-            <span style="color: var(--text-muted);">Observer GPS:</span>
-            <span id="observerGps">44.9146° N, 93.2604° W</span>
+        <div class="data-grid">
+            <span class="label">Observer GPS:</span>
+            <span class="val" id="valCoords">--° N, --° E</span>
+            <span class="label" id="targetNameLabel">Target Azimuth:</span>
+            <span class="val" id="valTargetAz">--°</span>
+            <span class="label" id="targetAltLabel">Target Altitude:</span>
+            <span class="val" id="valTargetAlt">--°</span>
         </div>
-        <div style="display: flex; justify-content: space-between; font-size: 14px;">
-            <span style="color: var(--text-muted);">Target Azimuth:</span>
-            <span id="targetAz">80.28°</span>
+        <div class="button-row">
+            <button class="action-btn" onclick="updateGPS()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2a10 10 0 1 0 10 10H12V2z"/><path d="M12 12L2.5 9.5M12 12l9.5-2.5"/></svg>
+                Force GPS Lock
+            </button>
         </div>
-        <div style="display: flex; justify-content: space-between; font-size: 14px;">
-            <span style="color: var(--text-muted);">Target Altitude:</span>
-            <span id="targetAlt">0.00°</span>
-        </div>
-        <button class="btn btn-secondary" style="width: 100%; margin-top: 4px;">Force GPS Lock</button>
     </div>
-</div>
+
+    <!-- Error Readout Card -->
+    <div class="error-display">
+        <div class="error-box">
+            <div class="err-label">Azimuth Error</div>
+            <div class="err-val" id="errAz">0.00°</div>
+        </div>
+        <div class="error-box">
+            <div class="err-label">Altitude Error</div>
+            <div class="err-val" id="errAlt">0.00°</div>
+        </div>
+        <div class="error-box">
+            <div class="err-label" id="totalOffsetLabel">Total Offset</div>
+            <div class="err-val" id="errTotal" style="color: var(--accent-sun);">0.00°</div>
+        </div>
+    </div>
+
+    <!-- User Operation Guide -->
+    <details>
+        <summary>📖 User Operation Guide</summary>
+        <div class="guide-content">
+            <p><strong>1. Hardware Setup:</strong> Mount your WitMotion WT9011DCL-BT50 sensor firmly on the upper tube assembly (near the focuser) of your Dobsonian telescope.</p>
+            <p><strong>2. Bluetooth Pairing:</strong> Power on the sensor (green light flashing), tap <strong>Connect BLE</strong>, and select your sensor in the device list.</p>
+            <p><strong>3. Target Selection:</strong> Choose <strong>☀️ Sun</strong> or <strong>🌙 Moon</strong> using the top toggle.</p>
+            <p><strong>4. Optical Calibration:</strong> Point your telescope directly at the target using a solar finder or shadow projection, center it precisely in the eyepiece, and tap <strong>Sync / Zero</strong>.</p>
+            <p><strong>5. Handheld Guidance:</strong> Hold your phone upright facing the target. Follow the on-screen directional arrow and text prompts to nudge the front opening of the scope. When locked ($\le 0.5^\circ$), the indicator turns solid and chimes!</p>
+        </div>
+    </details>
 
 <script>
-    // WitMotion BLE State Variables & Logic Fixes
+    let currentMode = 'sun';
     let bluetoothDevice = null;
     let bluetoothCharacteristic = null;
+    let isConnected = false;
 
-    let rawPitch = 0, rawRoll = 0, rawYaw = 0;
-    let zeroPitch = 0, zeroRoll = 0, zeroYaw = 0;
+    let zeroPitch = 0;
+    let zeroRoll = 0;
+    let zeroYaw = 0;
+    let currentPitch = 0;
+    let currentRoll = 0;
+    let currentYaw = 0;
 
-    const connectBtn = document.getElementById('btConnectBtn');
-    const zeroBtn = document.getElementById('btZeroBtn');
-    const btStatus = document.getElementById('btStatus');
-    
-    const valPitch = document.getElementById('valPitch');
-    const valRoll = document.getElementById('valRoll');
-    const valYaw = document.getElementById('valYaw');
-    const targetDot = document.getElementById('targetDot');
+    let observerLat = 44.9146;
+    let observerLon = -93.2604;
+    let targetAz = 0;
+    let targetAlt = 0;
 
-    connectBtn.addEventListener('click', async () => {
+    let audioEnabled = false;
+    let audioCtx = null;
+    let lockState = false;
+    let lastDriftWarningTime = 0;
+
+    let bleBuffer = [];
+
+    function setMode(mode) {
+        currentMode = mode;
+        const sunBtn = document.getElementById('sunBtn');
+        const moonBtn = document.getElementById('moonBtn');
+        const appLogo = document.getElementById('appLogoIcon');
+        const banner = document.getElementById('guidanceBanner');
+        const totalOffsetLbl = document.getElementById('totalOffsetLabel');
+
+        if (mode === 'sun') {
+            sunBtn.className = 'mode-btn active-sun';
+            moonBtn.className = 'mode-btn';
+            appLogo.style.background = 'var(--accent-sun)';
+            banner.className = 'guidance-banner';
+            totalOffsetLbl.style.color = 'var(--accent-sun)';
+        } else {
+            sunBtn.className = 'mode-btn';
+            moonBtn.className = 'mode-btn active-moon';
+            appLogo.style.background = 'var(--accent-moon)';
+            banner.className = 'guidance-banner moon-mode';
+            totalOffsetLbl.style.color = 'var(--accent-moon)';
+        }
+        calculateEphemeris();
+    }
+
+    function toggleAudioFeedback() {
+        audioEnabled = !audioEnabled;
+        const btn = document.getElementById('audioToggleBtn');
+        if (audioEnabled) {
+            btn.className = 'action-btn active-toggle';
+            btn.innerHTML = '🔊 Tone: ON';
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        } else {
+            btn.className = 'action-btn';
+            btn.innerHTML = '🔊 Tone: OFF';
+        }
+    }
+
+    function triggerHaptics(pattern) {
+        if ('vibrate' in navigator) {
+            try { navigator.vibrate(pattern); } catch(e){}
+        }
+    }
+
+    function playLockChime() {
+        if (!audioEnabled || !audioCtx) return;
         try {
-            btStatus.textContent = "CONNECTING...";
-            btStatus.style.color = varColor('--accent-orange');
+            const now = audioCtx.currentTime;
+            [523.25, 659.25, 783.99].forEach((freq, i) => {
+                let osc = audioCtx.createOscillator();
+                let gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now + i * 0.08);
+                gain.gain.setValueAtTime(0.15, now + i * 0.08);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.2);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now + i * 0.08);
+                osc.stop(now + i * 0.08 + 0.25);
+            });
+        } catch(e){}
+        triggerHaptics([60, 40, 60, 40, 60]);
+    }
 
-            // Request BLE device filtering for WitMotion or standard UART services
+    function playDriftBeep() {
+        if (!audioEnabled || !audioCtx) return;
+        try {
+            const now = audioCtx.currentTime;
+            let osc = audioCtx.createOscillator();
+            let gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(350, now);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + 0.3);
+        } catch(e){}
+        triggerHaptics([150]);
+    }
+
+    function evaluateFeedback(totalOffset) {
+        const now = Date.now();
+        if (totalOffset <= 0.5) {
+            if (!lockState) {
+                lockState = true;
+                playLockChime();
+            }
+        } else if (totalOffset >= 1.2) {
+            lockState = false;
+            if (now - lastDriftWarningTime > 1500) {
+                lastDriftWarningTime = now;
+                playDriftBeep();
+            }
+        }
+    }
+
+    async function toggleBLE() {
+        if (isConnected) {
+            if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+                bluetoothDevice.gatt.disconnect();
+            }
+            onDisconnected();
+            return;
+        }
+
+        try {
+            const bleBtnText = document.getElementById('bleBtnText');
+            bleBtnText.innerText = 'Scanning...';
+
             bluetoothDevice = await navigator.bluetooth.requestDevice({
-                filters: [
-                    { namePrefix: 'WT' },
-                    { namePrefix: 'Wit' },
-                    { services: ['0000ffe0-0000-1000-8000-00805f9b34fb'] }
-                ],
-                optionalServices: ['0000ffe0-0000-1000-8000-00805f9b34fb', '0000ffe1-0000-1000-8000-00805f9b34fb']
+                acceptAllDevices: true,
+                optionalServices: [
+                    '0000ffe0-0000-1000-8000-00805f9b34fb',
+                    'ffe0',
+                    '0000ffe5-0000-1000-8000-00805f9b34fb'
+                ]
             });
 
+            bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
             const server = await bluetoothDevice.gatt.connect();
-            
-            // Attempt to locate standard Nordic UART or WitMotion primary service
-            let service;
-            try {
-                service = await server.getPrimaryService('0000ffe0-0000-1000-8000-00805f9b34fb');
-            } catch (e) {
-                // Fallback to whatever primary service is available if FFE0 isn't explicit
-                const services = await server.getPrimaryServices();
-                service = services[0];
+
+            let characteristic = null;
+            const services = await server.getPrimaryServices();
+
+            for (let service of services) {
+                try {
+                    const characteristics = await service.getCharacteristics();
+                    for (let c of characteristics) {
+                        if (c.properties.notify || c.properties.read) {
+                            characteristic = c;
+                            break;
+                        }
+                    }
+                    if (characteristic) break;
+                } catch (err) {}
             }
 
-            const characteristics = await service.getCharacteristics();
-            // Find the characteristic that supports notifications
-            bluetoothCharacteristic = characteristics.find(c => c.properties.notify || c.properties.indicate);
-            
-            if (!bluetoothCharacteristic) {
-                // Fallback to first characteristic if none explicitly flagged notify
-                bluetoothCharacteristic = characteristics[0];
+            if (!characteristic) {
+                const service = await server.getPrimaryService('0000ffe0-0000-1000-8000-00805f9b34fb');
+                characteristic = await service.getCharacteristic('0000ffe1-0000-1000-8000-00805f9b34fb');
             }
 
+            bluetoothCharacteristic = characteristic;
             await bluetoothCharacteristic.startNotifications();
-            bluetoothCharacteristic.addEventListener('characteristicvaluechanged', handleIncomingData);
+            bluetoothCharacteristic.addEventListener('characteristicvaluechanged', handleBLEData);
 
-            btStatus.textContent = "CONNECTED";
-            btStatus.style.color = "var(--green)";
-            connectBtn.textContent = "Disconnect";
-            connectBtn.style.backgroundColor = "#ff453a";
+            isConnected = true;
+            document.getElementById('bleStatus').innerText = 'CONNECTED';
+            document.getElementById('bleStatus').style.color = 'var(--success)';
+            document.getElementById('connectBleBtn').className = 'action-btn active-toggle';
+            bleBtnText.innerText = 'Disconnect';
 
         } catch (error) {
-            console.error("BLE Connection failed:", error);
-            btStatus.textContent = "FAILED";
-            btStatus.style.color = "#ff453a";
+            console.error('BLE Error:', error);
+            alert('Bluetooth Error: ' + error.message);
+            onDisconnected();
         }
-    });
+    }
 
-    zeroBtn.addEventListener('click', () => {
-        // Zero/Sync current orientation offset
-        zeroPitch = rawPitch;
-        zeroRoll = rawRoll;
-        zeroYaw = rawYaw;
-        
-        // Snap dot to center on sync
-        targetDot.style.left = "50%";
-        targetDot.style.top = "50%";
-    });
+    function onDisconnected() {
+        isConnected = false;
+        document.getElementById('bleStatus').innerText = 'DISCONNECTED';
+        document.getElementById('bleStatus').style.color = 'var(--danger)';
+        document.getElementById('connectBleBtn').className = 'action-btn primary-btn';
+        document.getElementById('bleBtnText').innerText = 'Connect BLE';
+        bluetoothDevice = null;
+        bluetoothCharacteristic = null;
+    }
 
-    function handleIncomingData(event) {
+    function handleBLEData(event) {
         const value = event.target.value;
-        
-        // Robust byte inspection for WitMotion data packets (looking for header 0x55)
-        if (value.byteLength >= 11) {
-            const bytes = new Uint8Array(value.buffer);
-            for (let i = 0; i < bytes.length - 10; i++) {
-                if (bytes[i] === 0x55) {
-                    const packetType = bytes[i+1];
-                    // Angle packet type is usually 0x53
-                    if (packetType === 0x53) {
-                        const rollBytes = (bytes[i+3] << 8) | bytes[i+2];
-                        const pitchBytes = (bytes[i+5] << 8) | bytes[i+4];
-                        const yawBytes = (bytes[i+7] << 8) | bytes[i+6];
+        for (let i = 0; i < value.byteLength; i++) {
+            bleBuffer.push(value.getUint8(i));
+        }
 
-                        rawRoll = sign16(rollBytes) / 32768.0 * 180.0;
-                        rawPitch = sign16(pitchBytes) / 32768.0 * 180.0;
-                        rawYaw = sign16(yawBytes) / 32768.0 * 180.0;
-                    }
-                }
+        while (bleBuffer.length >= 11) {
+            if (bleBuffer[0] !== 0x55) {
+                bleBuffer.shift();
+                continue;
+            }
+
+            const packet = bleBuffer.slice(0, 11);
+            bleBuffer.splice(0, 11);
+
+            if (packet[1] === 0x53) {
+                let rollRaw = (packet[3] << 8 | packet[2]);
+                let pitchRaw = (packet[5] << 8 | packet[4]);
+                let yawRaw = (packet[7] << 8 | packet[6]);
+
+                let roll = (rollRaw / 32768.0) * 180.0;
+                let pitch = (pitchRaw / 32768.0) * 180.0;
+                let yaw = (yawRaw / 32768.0) * 180.0;
+
+                if (roll > 180) roll -= 360;
+                if (pitch > 180) pitch -= 360;
+                if (yaw > 180) yaw -= 360;
+
+                currentPitch = pitch;
+                currentRoll = roll;
+                currentYaw = yaw;
+
+                updateReadouts();
             }
         }
-
-        // Apply zero offset
-        const adjustedPitch = rawPitch - zeroPitch;
-        const adjustedYaw = rawYaw - zeroYaw;
-
-        // Update UI Text Readouts
-        valPitch.textContent = adjustedPitch.toFixed(1) + "°";
-        valRoll.textContent = (rawRoll - zeroRoll).toFixed(1) + "°";
-        valYaw.textContent = adjustedYaw.toFixed(1) + "°";
-
-        // Update Radar Position dynamically based on live sensor feed
-        const xPos = 50 + (adjustedYaw * 2); // Scale factor for visual feedback
-        const yPos = 50 - (adjustedPitch * 2);
-        targetDot.style.left = Math.max(5, Math.min(95, xPos)) + "%";
-        targetDot.style.top = Math.max(5, Math.min(95, yPos)) + "%";
     }
 
-    function sign16(num) {
-        return (num & 0x8000) ? num - 0x10000 : num;
+    function syncZero() {
+        zeroPitch = currentPitch;
+        zeroRoll = currentRoll;
+        zeroYaw = currentYaw;
+        const btn = document.querySelector('button[onclick="syncZero()"]');
+        btn.style.borderColor = 'var(--success)';
+        setTimeout(() => { btn.style.borderColor = 'var(--border-color)'; }, 500);
+        updateReadouts();
     }
 
-    function varColor(name) {
-        return getComputedStyle(document.documentElement).getPropertyValue(name);
+    function updateReadouts() {
+        document.getElementById('valPitch').innerText = currentPitch.toFixed(1) + '°';
+        document.getElementById('valRoll').innerText = currentRoll.toFixed(1) + '°';
+        document.getElementById('valYaw').innerText = currentYaw.toFixed(1) + '°';
+
+        let relPitch = currentPitch - zeroPitch;
+        let relYaw = currentYaw - zeroYaw;
+
+        let azError = relYaw - targetAz;
+        let altError = relPitch - targetAlt;
+        let totalOffset = Math.sqrt(azError * azError + altError * altError);
+
+        document.getElementById('errAz').innerText = azError.toFixed(2) + '°';
+        document.getElementById('errAlt').innerText = altError.toFixed(2) + '°';
+        document.getElementById('errTotal').innerText = totalOffset.toFixed(2) + '°';
+
+        updateLEDAndGuidance(totalOffset, azError, altError);
+        drawReticle(azError, altError, totalOffset);
     }
+
+    function updateGPS() {
+        if ('geolocation' in navigator) {
+            document.getElementById('gpsStatusBadge').innerText = 'Locating GPS...';
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    observerLat = position.coords.latitude;
+                    observerLon = position.coords.longitude;
+                    document.getElementById('gpsStatusBadge').innerText = 'GPS Locked';
+                    document.getElementById('valCoords').innerText = `${observerLat.toFixed(4)}° N, ${Math.abs(observerLon).toFixed(4)}° ${observerLon >= 0 ? 'E' : 'W'}`;
+                    calculateEphemeris();
+                },
+                (error) => {
+                    document.getElementById('gpsStatusBadge').innerText = 'GPS Fallback (Mpls)';
+                    document.getElementById('valCoords').innerText = '44.9146° N, 93.2604° W';
+                    calculateEphemeris();
+                },
+                { timeout: 10000, enableHighAccuracy: true }
+            );
+        } else {
+            calculateEphemeris();
+        }
+    }
+
+    function calculateEphemeris() {
+        const now = new Date();
+        const jd = (now.getTime() / 86400000) + 2440587.5;
+        const d = jd - 2451545.0;
+
+        if (currentMode === 'sun') {
+            document.getElementById('targetNameLabel').innerText = 'Target Azimuth:';
+            document.getElementById('targetAltLabel').innerText = 'Target Altitude:';
+            
+            let g = (357.529 + 0.98560028 * d) % 360;
+            let q = (280.459 + 0.98564736 * d) % 360;
+            let l = (q + 1.915 * Math.sin(g * Math.PI/180) + 0.020 * Math.sin(2 * g * Math.PI/180)) % 360;
+            let e = 23.439 - 0.0000004 * d;
+            
+            let sinDecl = Math.sin(e * Math.PI/180) * Math.sin(l * Math.PI/180);
+            let decl = Math.asin(sinDecl) * 180 / Math.PI;
+            
+            let gmst = (280.46061837 + 360.98564736629 * d) % 360;
+            let lmst = (gmst + observerLon) % 360;
+            let ha = (lmst - (q - 1.915 * Math.sin(g * Math.PI/180))) % 360;
+            
+            let latRad = observerLat * Math.PI / 180;
+            let declRad = decl * Math.PI / 180;
+            let haRad = ha * Math.PI / 180;
+            
+            let alt = Math.asin(Math.sin(latRad) * Math.sin(declRad) + Math.cos(latRad) * Math.cos(declRad) * Math.cos(haRad)) * 180 / Math.PI;
+            let az = Math.atan2(-Math.sin(haRad), Math.tan(declRad) * Math.cos(latRad) - Math.sin(latRad) * Math.cos(haRad)) * 180 / Math.PI + 180;
+            
+            targetAz = az;
+            targetAlt = Math.max(0, alt);
+        } else {
+            document.getElementById('targetNameLabel').innerText = 'Moon Azimuth:';
+            document.getElementById('targetAltLabel').innerText = 'Moon Altitude:';
+            
+            let lMoon = (218.316 + 13.176396 * d) % 360;
+            let bMoon = 5.128 * Math.sin((93.3 + 13.029 * d) * Math.PI/180);
+            let latRad = observerLat * Math.PI / 180;
+            let declRad = bMoon * Math.PI / 180;
+            let gmst = (280.46061837 + 360.98564736629 * d) % 360;
+            let lmst = (gmst + observerLon) % 360;
+            let ha = (lmst - lMoon) % 360;
+            let haRad = ha * Math.PI / 180;
+
+            let alt = Math.asin(Math.sin(latRad) * Math.sin(declRad) + Math.cos(latRad) * Math.cos(declRad) * Math.cos(haRad)) * 180 / Math.PI;
+            let az = Math.atan2(-Math.sin(haRad), Math.tan(declRad) * Math.cos(latRad) - Math.sin(latRad) * Math.cos(haRad)) * 180 / Math.PI + 180;
+
+            targetAz = az;
+            targetAlt = Math.max(0, alt);
+        }
+
+        document.getElementById('valTargetAz').innerText = targetAz.toFixed(2) + '°';
+        document.getElementById('valTargetAlt').innerText = targetAlt.toFixed(2) + '°';
+        updateReadouts();
+    }
+
+    function updateLEDAndGuidance(totalOffset, azError, altError) {
+        const led = document.getElementById('statusLed');
+        const statusText = document.getElementById('statusText');
+        const instruction = document.getElementById('guidanceInstruction');
+
+        evaluateFeedback(totalOffset);
+
+        if (totalOffset <= 0.5) {
+            led.className = 'led-dot locked';
+            led.style.background = currentMode === 'sun' ? 'var(--accent-sun)' : 'var(--accent-moon)';
+            statusText.innerText = 'Target Centered & Locked!';
+            instruction.innerText = '✨ Target acquired in eyepiece view!';
+        } else {
+            led.className = 'led-dot flashing-red';
+            statusText.innerText = 'Aligning Scope...';
+
+            let dirParts = [];
+            if (altError > 0.5) dirParts.push('DOWN');
+            else if (altError < -0.5) dirParts.push('UP');
+
+            if (azError > 0.5) dirParts.push('LEFT');
+            else if (azError < -0.5) dirParts.push('RIGHT');
+
+            if (dirParts.length > 0) {
+                instruction.innerText = `Nudge front opening: ${dirParts.join(' & ')}`;
+            } else {
+                instruction.innerText = 'Fine-tuning alignment...';
+            }
+        }
+    }
+
+    function drawReticle(azError, altError, totalOffset) {
+        const canvas = document.getElementById('reticleCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width;
+        const h = canvas.height;
+        const cx = w / 2;
+        const cy = h / 2;
+        const maxScaleDeg = 5.0;
+        const radiusLimit = w * 0.42;
+
+        ctx.clearRect(0, 0, w, h);
+
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radiusLimit, 0, Math.PI * 2);
+        ctx.stroke();
+
+        [1, 3, 5].forEach(deg => {
+            let r = (deg / maxScaleDeg) * radiusLimit;
+            ctx.strokeStyle = deg === 1 ? 'rgba(245, 158, 11, 0.3)' : '#1e293b';
+            ctx.setLineDash(deg === 1 ? [4, 4] : []);
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.stroke();
+        });
+        ctx.setLineDash([]);
+
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cx, 0); ctx.lineTo(cx, h);
+        ctx.moveTo(0, cy); ctx.lineTo(w, cy);
+        ctx.stroke();
+
+        ctx.strokeStyle = currentMode === 'sun' ? '#f59e0b' : '#38bdf8';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+        ctx.stroke();
+
+        let px = cx + (azError / maxScaleDeg) * radiusLimit;
+        let py = cy - (altError / maxScaleDeg) * radiusLimit;
+
+        let distFromCenter = Math.sqrt((px - cx)**2 + (py - cy)**2);
+        if (distFromCenter > radiusLimit) {
+            let angle = Math.atan2(py - cy, px - cx);
+            px = cx + radiusLimit * Math.cos(angle);
+            py = cy + radiusLimit * Math.sin(angle);
+        }
+
+        if (totalOffset > 0.3) {
+            ctx.strokeStyle = currentMode === 'sun' ? '#f59e0b' : '#38bdf8';
+            ctx.fillStyle = ctx.strokeStyle;
+            ctx.lineWidth = 3;
+
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(px, py);
+            ctx.stroke();
+
+            let angle = Math.atan2(py - cy, px - cx);
+            ctx.save();
+            ctx.translate(px, py);
+            ctx.rotate(angle);
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(-10, -5);
+            ctx.lineTo(-10, 5);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        let bubbleColor = currentMode === 'sun' ? '#f59e0b' : '#38bdf8';
+        ctx.fillStyle = bubbleColor;
+        ctx.shadowColor = bubbleColor;
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(px, py, 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+
+    window.onload = () => {
+        updateGPS();
+        setInterval(calculateEphemeris, 30000);
+    };
 </script>
-
 </body>
 </html>
