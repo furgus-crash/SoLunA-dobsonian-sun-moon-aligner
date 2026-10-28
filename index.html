@@ -4,19 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>SoLunA - Solar & Lunar Telescope Alignment</title>
-    <link rel="manifest" href="data:application/manifest+json,{
-        'name':'SoLunA',
-        'short_name':'SoLunA',
-        'start_url':'.',
-        'display':'standalone',
-        'background_color':'%230b0f19',
-        'theme_color':'%230b0f19',
-        'icons':[{
-            'src':'data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 512 512\'><circle cx=\'256\' cy=\'256\' r=\'240\' fill=\'%230b0f19\' stroke=\'%23f59e0b\' stroke-width=\'16\'/><path d=\'M256 16a240 240 0 0 1 0 480z\' fill=\'%2338bdf8\'/></svg>',
-            'sizes':'512x512',
-            'type':'image/svg+xml'
-        }]
-    }">
     <style>
         :root {
             --bg-color: #0b0f19;
@@ -110,7 +97,6 @@
             color: #000;
         }
 
-        /* Reticle Display Card */
         .reticle-card {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
@@ -120,7 +106,6 @@
             flex-direction: column;
             align-items: center;
             position: relative;
-            overflow: hidden;
         }
 
         .canvas-container {
@@ -168,7 +153,6 @@
             background: var(--danger) !important;
         }
 
-        /* Operator Guidance Banner */
         .guidance-banner {
             background: rgba(245, 158, 11, 0.1);
             border: 1px solid rgba(245, 158, 11, 0.3);
@@ -203,7 +187,6 @@
             color: var(--text-main);
         }
 
-        /* Control Cards */
         .control-card {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
@@ -328,7 +311,6 @@
             margin-top: 2px;
         }
 
-        /* Guide collapsible */
         details {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
@@ -392,7 +374,7 @@
     <div class="control-card">
         <div class="card-header">
             <span>WitMotion WT9011DCL BLE</span>
-            <span id="bleStatus" style="font-size: 11px; color: var(--danger);">Disconnected</span>
+            <span id="bleStatus" style="font-size: 11px; color: var(--danger);">DISCONNECTED</span>
         </div>
         <div class="button-row">
             <button class="action-btn primary-btn" id="connectBleBtn" onclick="toggleBLE()">
@@ -481,12 +463,11 @@
     </details>
 
 <script>
-    let currentMode = 'sun'; // 'sun' or 'moon'
+    let currentMode = 'sun';
     let bluetoothDevice = null;
     let bluetoothCharacteristic = null;
     let isConnected = false;
 
-    // Calibration & Sensor Offsets
     let zeroPitch = 0;
     let zeroRoll = 0;
     let zeroYaw = 0;
@@ -494,20 +475,16 @@
     let currentRoll = 0;
     let currentYaw = 0;
 
-    // GPS & Ephemeris
-    let observerLat = 44.9146; // Default Minneapolis fallback
+    let observerLat = 44.9146;
     let observerLon = -93.2604;
     let targetAz = 0;
     let targetAlt = 0;
-    let gpsLocked = false;
 
-    // Audio & Haptics State
     let audioEnabled = false;
     let audioCtx = null;
-    let lockState = false; // true if within locked threshold (<0.5 deg)
+    let lockState = false;
     let lastDriftWarningTime = 0;
 
-    // Unprocessed BLE byte buffer
     let bleBuffer = [];
 
     function setMode(mode) {
@@ -534,7 +511,6 @@
         calculateEphemeris();
     }
 
-    // --- Audio & Haptics Engine ---
     function toggleAudioFeedback() {
         audioEnabled = !audioEnabled;
         const btn = document.getElementById('audioToggleBtn');
@@ -563,7 +539,7 @@
         if (!audioEnabled || !audioCtx) return;
         try {
             const now = audioCtx.currentTime;
-            [523.25, 659.25, 783.99].forEach((freq, i) => { // C5, E5, G5
+            [523.25, 659.25, 783.99].forEach((freq, i) => {
                 let osc = audioCtx.createOscillator();
                 let gain = audioCtx.createGain();
                 osc.type = 'sine';
@@ -606,7 +582,6 @@
             }
         } else if (totalOffset >= 1.2) {
             lockState = false;
-            // Repeat drift beep every 1.5 seconds if drifted
             if (now - lastDriftWarningTime > 1500) {
                 lastDriftWarningTime = now;
                 playDriftBeep();
@@ -614,7 +589,6 @@
         }
     }
 
-    // --- BLE Connection Logic with Broad Fallbacks ---
     async function toggleBLE() {
         if (isConnected) {
             if (bluetoothDevice && bluetoothDevice.gatt.connected) {
@@ -628,27 +602,21 @@
             const bleBtnText = document.getElementById('bleBtnText');
             bleBtnText.innerText = 'Scanning...';
 
-            // Broad request: allows user to pick any BLE device or filters for WT devices
-            let options = {
-                acceptAllDevices: true
-            };
+            bluetoothDevice = await navigator.bluetooth.requestDevice({
+                acceptAllDevices: true,
+                optionalServices: [
+                    '0000ffe0-0000-1000-8000-00805f9b34fb',
+                    'ffe0',
+                    '0000ffe5-0000-1000-8000-00805f9b34fb'
+                ]
+            });
 
-            // If user's browser supports optional services for WitMotion
-            options.optionalServices = [
-                '0000ffe0-0000-1000-8000-00805f9b34fb',
-                'ffe0',
-                '0000ffe5-0000-1000-8000-00805f9b34fb'
-            ];
-
-            bluetoothDevice = await navigator.bluetooth.requestDevice(options);
             bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
-
             const server = await bluetoothDevice.gatt.connect();
-            
-            // Try to find the correct characteristic across standard WitMotion UUIDs
+
             let characteristic = null;
             const services = await server.getPrimaryServices();
-            
+
             for (let service of services) {
                 try {
                     const characteristics = await service.getCharacteristics();
@@ -659,13 +627,10 @@
                         }
                     }
                     if (characteristic) break;
-                } catch (err) {
-                    // skip restricted services
-                }
+                } catch (err) {}
             }
 
             if (!characteristic) {
-                // Fallback to standard FFE1 if auto-discovery fails
                 const service = await server.getPrimaryService('0000ffe0-0000-1000-8000-00805f9b34fb');
                 characteristic = await service.getCharacteristic('0000ffe1-0000-1000-8000-00805f9b34fb');
             }
@@ -675,21 +640,21 @@
             bluetoothCharacteristic.addEventListener('characteristicvaluechanged', handleBLEData);
 
             isConnected = true;
-            document.getElementById('bleStatusinnerText = 'Connected' || 'Connected';
+            document.getElementById('bleStatus').innerText = 'CONNECTED';
             document.getElementById('bleStatus').style.color = 'var(--success)';
             document.getElementById('connectBleBtn').className = 'action-btn active-toggle';
             bleBtnText.innerText = 'Disconnect';
 
         } catch (error) {
-            console.error('BLE Connection Error:', error);
-            alert('Failed to connect to BLE Sensor: ' + error.message);
+            console.error('BLE Error:', error);
+            alert('Bluetooth Error: ' + error.message);
             onDisconnected();
         }
     }
 
     function onDisconnected() {
         isConnected = false;
-        document.getElementById('bleStatus').innerText = 'Disconnected';
+        document.getElementById('bleStatus').innerText = 'DISCONNECTED';
         document.getElementById('bleStatus').style.color = 'var(--danger)';
         document.getElementById('connectBleBtn').className = 'action-btn primary-btn';
         document.getElementById('bleBtnText').innerText = 'Connect BLE';
@@ -697,14 +662,12 @@
         bluetoothCharacteristic = null;
     }
 
-    // --- WitMotion Packet Parser ---
     function handleBLEData(event) {
         const value = event.target.value;
         for (let i = 0; i < value.byteLength; i++) {
             bleBuffer.push(value.getUint8(i));
         }
 
-        // Parse 11-byte WitMotion packets starting with 0x55
         while (bleBuffer.length >= 11) {
             if (bleBuffer[0] !== 0x55) {
                 bleBuffer.shift();
@@ -714,8 +677,7 @@
             const packet = bleBuffer.slice(0, 11);
             bleBuffer.splice(0, 11);
 
-            const packetType = packet[1];
-            if (packetType === 0x53) { // Angle packet (Pitch, Roll, Yaw)
+            if (packet[1] === 0x53) {
                 let rollRaw = (packet[3] << 8 | packet[2]);
                 let pitchRaw = (packet[5] << 8 | packet[4]);
                 let yawRaw = (packet[7] << 8 | packet[6]);
@@ -741,13 +703,10 @@
         zeroPitch = currentPitch;
         zeroRoll = currentRoll;
         zeroYaw = currentYaw;
-        syncZeroAnimation();
-    }
-
-    function syncZeroAnimation() {
         const btn = document.querySelector('button[onclick="syncZero()"]');
         btn.style.borderColor = 'var(--success)';
         setTimeout(() => { btn.style.borderColor = 'var(--border-color)'; }, 500);
+        updateReadouts();
     }
 
     function updateReadouts() {
@@ -755,17 +714,11 @@
         document.getElementById('valRoll').innerText = currentRoll.toFixed(1) + '°';
         document.getElementById('valYaw').innerText = currentYaw.toFixed(1) + '°';
 
-        // Apply calibration offsets
         let relPitch = currentPitch - zeroPitch;
         let relYaw = currentYaw - zeroYaw;
 
-        // Map sensor delta to telescope coordinates
-        let scopeAz = relYaw;
-        let scopeAlt = relPitch;
-
-        // Calculate error relative to target ephemeris
-        let azError = scopeAz - targetAz;
-        let altError = scopeAlt - targetAlt;
+        let azError = relYaw - targetAz;
+        let altError = relPitch - targetAlt;
         let totalOffset = Math.sqrt(azError * azError + altError * altError);
 
         document.getElementById('errAz').innerText = azError.toFixed(2) + '°';
@@ -776,7 +729,6 @@
         drawReticle(azError, altError, totalOffset);
     }
 
-    // --- Ephemeris & GPS ---
     function updateGPS() {
         if ('geolocation' in navigator) {
             document.getElementById('gpsStatusBadge').innerText = 'Locating GPS...';
@@ -784,13 +736,11 @@
                 (position) => {
                     observerLat = position.coords.latitude;
                     observerLon = position.coords.longitude;
-                    gpsLocked = true;
                     document.getElementById('gpsStatusBadge').innerText = 'GPS Locked';
                     document.getElementById('valCoords').innerText = `${observerLat.toFixed(4)}° N, ${Math.abs(observerLon).toFixed(4)}° ${observerLon >= 0 ? 'E' : 'W'}`;
                     calculateEphemeris();
                 },
                 (error) => {
-                    console.warn('GPS error, using Minneapolis fallback:', error);
                     document.getElementById('gpsStatusBadge').innerText = 'GPS Fallback (Mpls)';
                     document.getElementById('valCoords').innerText = '44.9146° N, 93.2604° W';
                     calculateEphemeris();
@@ -804,7 +754,6 @@
 
     function calculateEphemeris() {
         const now = new Date();
-        // Approximate solar/lunar position calculation for real-time tracking
         const jd = (now.getTime() / 86400000) + 2440587.5;
         const d = jd - 2451545.0;
 
@@ -812,7 +761,6 @@
             document.getElementById('targetNameLabel').innerText = 'Target Azimuth:';
             document.getElementById('targetAltLabel').innerText = 'Target Altitude:';
             
-            // Solar approximate ephemeris model
             let g = (357.529 + 0.98560028 * d) % 360;
             let q = (280.459 + 0.98564736 * d) % 360;
             let l = (q + 1.915 * Math.sin(g * Math.PI/180) + 0.020 * Math.sin(2 * g * Math.PI/180)) % 360;
@@ -838,7 +786,6 @@
             document.getElementById('targetNameLabel').innerText = 'Moon Azimuth:';
             document.getElementById('targetAltLabel').innerText = 'Moon Altitude:';
             
-            // Lunar approximate model (faster orbital cycle)
             let lMoon = (218.316 + 13.176396 * d) % 360;
             let bMoon = 5.128 * Math.sin((93.3 + 13.029 * d) * Math.PI/180);
             let latRad = observerLat * Math.PI / 180;
@@ -855,16 +802,11 @@
             targetAlt = Math.max(0, alt);
         }
 
-        document.getElementById('valTargetAz').innerText = targetAz.toFixed(2) + '° (' + getCardinal(targetAz) + ')';
+        document.getElementById('valTargetAz').innerText = targetAz.toFixed(2) + '°';
         document.getElementById('valTargetAlt').innerText = targetAlt.toFixed(2) + '°';
+        updateReadouts();
     }
 
-    function getCardinal(az) {
-        const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-        return dirs[Math.round((az % 360) / 45) % 8];
-    }
-
-    // --- Reticle Canvas & Vector Guidance ---
     function updateLEDAndGuidance(totalOffset, azError, altError) {
         const led = document.getElementById('statusLed');
         const statusText = document.getElementById('statusText');
@@ -898,24 +840,23 @@
 
     function drawReticle(azError, altError, totalOffset) {
         const canvas = document.getElementById('reticleCanvas');
+        if (!canvas) return;
         const ctx = canvas.getContext('2d');
         const w = canvas.width;
         const h = canvas.height;
         const cx = w / 2;
         const cy = h / 2;
-        const maxScaleDeg = 5.0; // Max radius represents 5 degrees off target
+        const maxScaleDeg = 5.0;
         const radiusLimit = w * 0.42;
 
         ctx.clearRect(0, 0, w, h);
 
-        // Draw outer ring
         ctx.strokeStyle = '#1e293b';
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(cx, cy, radiusLimit, 0, Math.PI * 2);
         ctx.stroke();
 
-        // Draw concentric reference circles (1°, 3°, 5°)
         [1, 3, 5].forEach(deg => {
             let r = (deg / maxScaleDeg) * radiusLimit;
             ctx.strokeStyle = deg === 1 ? 'rgba(245, 158, 11, 0.3)' : '#1e293b';
@@ -926,7 +867,6 @@
         });
         ctx.setLineDash([]);
 
-        // Crosshairs
         ctx.strokeStyle = '#334155';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -934,18 +874,15 @@
         ctx.moveTo(0, cy); ctx.lineTo(w, cy);
         ctx.stroke();
 
-        // Center crosshair target
-        ctx.strokeStyle = currentMode === 'sun' ? 'var(--accent-sun)' : 'var(--accent-moon)';
+        ctx.strokeStyle = currentMode === 'sun' ? '#f59e0b' : '#38bdf8';
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(cx, cy, 6, 0, Math.PI * 2);
         ctx.stroke();
 
-        // Map error to canvas coordinates (Azimuth -> X, Altitude -> Y)
         let px = cx + (azError / maxScaleDeg) * radiusLimit;
         let py = cy - (altError / maxScaleDeg) * radiusLimit;
 
-        // Clamp bubble to outer ring if far off
         let distFromCenter = Math.sqrt((px - cx)**2 + (py - cy)**2);
         if (distFromCenter > radiusLimit) {
             let angle = Math.atan2(py - cy, px - cx);
@@ -953,9 +890,8 @@
             py = cy + radiusLimit * Math.sin(angle);
         }
 
-        // Draw Directional Vector Arrow from Center to Target Bubble
         if (totalOffset > 0.3) {
-            ctx.strokeStyle = currentMode === 'sun' ? 'var(--accent-sun)' : 'var(--accent-moon)';
+            ctx.strokeStyle = currentMode === 'sun' ? '#f59e0b' : '#38bdf8';
             ctx.fillStyle = ctx.strokeStyle;
             ctx.lineWidth = 3;
 
@@ -964,7 +900,6 @@
             ctx.lineTo(px, py);
             ctx.stroke();
 
-            // Arrow head
             let angle = Math.atan2(py - cy, px - cx);
             ctx.save();
             ctx.translate(px, py);
@@ -978,7 +913,6 @@
             ctx.restore();
         }
 
-        // Draw Target Bubble (Sun/Moon colored)
         let bubbleColor = currentMode === 'sun' ? '#f59e0b' : '#38bdf8';
         ctx.fillStyle = bubbleColor;
         ctx.shadowColor = bubbleColor;
@@ -986,13 +920,12 @@
         ctx.beginPath();
         ctx.arc(px, py, 12, 0, Math.PI * 2);
         ctx.fill();
-        ctx.shadowBlur = 0; // reset shadow
+        ctx.shadowBlur = 0;
     }
 
-    // Initialize on load
     window.onload = () => {
         updateGPS();
-        setInterval(calculateEphemeris, 30000); // Recalculate ephemeris every 30s
+        setInterval(calculateEphemeris, 30000);
     };
 </script>
 </body>
