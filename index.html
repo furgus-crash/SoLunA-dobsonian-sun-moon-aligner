@@ -153,6 +153,12 @@
             background: var(--danger) !important;
         }
 
+        .flashing-amber {
+            animation: pulse-red 1s infinite ease-in-out;
+            background: #f59e0b !important;
+            box-shadow: 0 0 8px #f59e0b;
+        }
+
         .guidance-banner {
             background: rgba(245, 158, 11, 0.1);
             border: 1px solid rgba(245, 158, 11, 0.3);
@@ -244,6 +250,18 @@
             background: var(--success);
             border-color: #4ade80;
             color: #000;
+        }
+
+        .fov-input {
+            width: 90px;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: 14px;
+            font-weight: 600;
+            text-align: right;
         }
 
         .sensor-readouts {
@@ -373,7 +391,7 @@
     <!-- WitMotion BLE Control & Readout -->
     <div class="control-card">
         <div class="card-header">
-            <span>WitMotion WT9011DCL BLE</span>
+            <span>WitMotion WT901BLE67 BLE</span>
             <span id="bleStatus" style="font-size: 11px; color: var(--danger);">DISCONNECTED</span>
         </div>
         <div class="button-row">
@@ -399,6 +417,14 @@
                 <div class="label">Yaw (Az)</div>
                 <div class="value" id="valYaw">0.0°</div>
             </div>
+        </div>
+    </div>
+
+    <!-- Eyepiece Field of View -->
+    <div class="control-card" style="padding: 12px 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+            <div style="font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Eyepiece True FOV (°)</div>
+            <input type="number" id="fovInput" class="fov-input" value="1.0" min="0.1" max="5" step="0.1" inputmode="decimal" oninput="updateReadouts()">
         </div>
     </div>
 
@@ -438,15 +464,15 @@
     <div class="error-display">
         <div class="error-box">
             <div class="err-label">Azimuth Error</div>
-            <div class="err-val" id="errAz">0.00°</div>
+            <div class="err-val" id="errAz">--</div>
         </div>
         <div class="error-box">
             <div class="err-label">Altitude Error</div>
-            <div class="err-val" id="errAlt">0.00°</div>
+            <div class="err-val" id="errAlt">--</div>
         </div>
         <div class="error-box">
             <div class="err-label" id="totalOffsetLabel">Total Offset</div>
-            <div class="err-val" id="errTotal" style="color: var(--accent-sun);">0.00°</div>
+            <div class="err-val" id="errTotal" style="color: var(--accent-sun);">--</div>
         </div>
     </div>
 
@@ -454,11 +480,12 @@
     <details>
         <summary>📖 User Operation Guide</summary>
         <div class="guide-content">
-            <p><strong>1. Hardware Setup:</strong> Mount your WitMotion WT9011DCL-BT50 sensor firmly on the upper tube assembly (near the focuser) of your Dobsonian telescope.</p>
-            <p><strong>2. Bluetooth Pairing:</strong> Power on the sensor (green light flashing), tap <strong>Connect BLE</strong>, and select your sensor in the device list.</p>
+            <p><strong>1. Hardware Setup:</strong> Mount your WitMotion WT901BLE67 sensor firmly on the upper tube assembly (near the focuser) of your Dobsonian telescope.</p>
+            <p><strong>2. Bluetooth Pairing:</strong> Power on the sensor, tap <strong>Connect BLE</strong>, and select your sensor in the device list.</p>
             <p><strong>3. Target Selection:</strong> Choose <strong>☀️ Sun</strong> or <strong>🌙 Moon</strong> using the top toggle.</p>
-            <p><strong>4. Optical Calibration:</strong> Point your telescope directly at the target using a solar finder or shadow projection, center it precisely in the eyepiece, and tap <strong>Sync / Zero</strong>.</p>
-            <p><strong>5. Handheld Guidance:</strong> Hold your phone upright facing the target. Follow the on-screen directional arrow and text prompts to nudge the front opening of the scope. When locked ($\le 0.5^\circ$), the indicator turns solid and chimes!</p>
+            <p><strong>4. Optical Calibration:</strong> Point your telescope directly at the target using a solar finder or shadow projection, center it precisely in the eyepiece, and tap <strong>Sync / Zero</strong>. This records where the target really is and what the sensor reads at that moment. From then on the app follows the target's movement across the sky for you. Sync again any time you re-center it by eye.</p>
+            <p><strong>5. Field of View:</strong> Enter your eyepiece's true field of view in degrees (apparent field of view divided by magnification). The status changes to "Realign Soon" when the target has drifted about 60% of the way to the edge of the view, and to "REALIGN NOW" at about 85%.</p>
+            <p><strong>6. Handheld Guidance:</strong> Hold your phone upright facing the target. Follow the on-screen directional arrow and text prompts to nudge the front opening of the scope. When locked (within 30% of the field radius, and never more than 0.5°), the indicator turns solid and chimes.</p>
         </div>
     </details>
 
@@ -467,10 +494,16 @@
     let bluetoothDevice = null;
     let bluetoothCharacteristic = null;
     let isConnected = false;
+    let hasData = false;
 
+    // Calibration: the sensor reading and the target's true sky position at the moment of Sync
+    let calibrated = false;
     let zeroPitch = 0;
     let zeroRoll = 0;
     let zeroYaw = 0;
+    let syncAz = 0;
+    let syncAlt = 0;
+
     let currentPitch = 0;
     let currentRoll = 0;
     let currentYaw = 0;
@@ -486,6 +519,14 @@
     let lastDriftWarningTime = 0;
 
     let bleBuffer = [];
+
+    function wrap180(a) {
+        return ((a + 180) % 360 + 360) % 360 - 180;
+    }
+
+    function norm360(a) {
+        return ((a % 360) + 360) % 360;
+    }
 
     function setMode(mode) {
         currentMode = mode;
@@ -573,16 +614,26 @@
         triggerHaptics([150]);
     }
 
-    function evaluateFeedback(totalOffset) {
+    // Limits (degrees of offset) based on the eyepiece true field of view
+    function fovLimits() {
+        let fov = parseFloat(document.getElementById('fovInput').value);
+        if (!isFinite(fov) || fov <= 0) fov = 1.0;
+        fov = Math.max(0.1, fov);
+        const r = fov / 2;
+        return { r: r, lock: Math.min(0.5, 0.3 * r), warn: 0.6 * r, crit: 0.85 * r };
+    }
+
+    function evaluateFeedback(totalOffset, lim) {
         const now = Date.now();
-        if (totalOffset <= 0.5) {
+        if (totalOffset <= lim.lock) {
             if (!lockState) {
                 lockState = true;
                 playLockChime();
             }
-        } else if (totalOffset >= 1.2) {
+        } else if (totalOffset >= lim.warn) {
             lockState = false;
-            if (now - lastDriftWarningTime > 1500) {
+            const gap = totalOffset >= lim.crit ? 1500 : 4000;
+            if (now - lastDriftWarningTime > gap) {
                 lastDriftWarningTime = now;
                 playDriftBeep();
             }
@@ -654,12 +705,17 @@
 
     function onDisconnected() {
         isConnected = false;
+        hasData = false;
+        calibrated = false;
+        lockState = false;
+        bleBuffer = [];
         document.getElementById('bleStatus').innerText = 'DISCONNECTED';
         document.getElementById('bleStatus').style.color = 'var(--danger)';
         document.getElementById('connectBleBtn').className = 'action-btn primary-btn';
         document.getElementById('bleBtnText').innerText = 'Connect BLE';
         bluetoothDevice = null;
         bluetoothCharacteristic = null;
+        updateReadouts();
     }
 
     function handleBLEData(event) {
@@ -667,17 +723,36 @@
         for (let i = 0; i < value.byteLength; i++) {
             bleBuffer.push(value.getUint8(i));
         }
+        if (bleBuffer.length > 2000) bleBuffer = bleBuffer.slice(-200);
 
-        while (bleBuffer.length >= 11) {
+        while (bleBuffer.length >= 2) {
             if (bleBuffer[0] !== 0x55) {
                 bleBuffer.shift();
                 continue;
             }
 
-            const packet = bleBuffer.slice(0, 11);
-            bleBuffer.splice(0, 11);
+            const type = bleBuffer[1];
+            let len = 0;
+            if (type === 0x61) len = 20;        // WT901BLE67 combined packet: acceleration, gyro, angles
+            else if (type === 0x53) len = 11;   // older angle-only packet
+            else {
+                bleBuffer.shift();
+                continue;
+            }
+            if (bleBuffer.length < len) break;
 
-            if (packet[1] === 0x53) {
+            const packet = bleBuffer.slice(0, len);
+            bleBuffer.splice(0, len);
+
+            if (type === 0x61) {
+                // bytes 2-7 acceleration, 8-13 gyro, 14-19 roll / pitch / yaw (signed 16-bit, little-endian)
+                const s16 = (lo, hi) => { const v = (hi << 8) | lo; return v >= 0x8000 ? v - 0x10000 : v; };
+                currentRoll = (s16(packet[14], packet[15]) / 32768.0) * 180.0;
+                currentPitch = (s16(packet[16], packet[17]) / 32768.0) * 180.0;
+                currentYaw = (s16(packet[18], packet[19]) / 32768.0) * 180.0;
+                hasData = true;
+                updateReadouts();
+            } else if (type === 0x53) {
                 let rollRaw = (packet[3] << 8 | packet[2]);
                 let pitchRaw = (packet[5] << 8 | packet[4]);
                 let yawRaw = (packet[7] << 8 | packet[6]);
@@ -693,20 +768,42 @@
                 currentPitch = pitch;
                 currentRoll = roll;
                 currentYaw = yaw;
+                hasData = true;
 
                 updateReadouts();
             }
         }
     }
 
+    // Calibrate: the scope is centered on the target right now. Remember the sensor angles
+    // and the target's true position, then track the target's movement from here.
     function syncZero() {
+        if (!isConnected || !hasData) {
+            alert('Connect the sensor and wait for readings before tapping Sync / Zero.');
+            return;
+        }
+        calculateEphemeris();
         zeroPitch = currentPitch;
         zeroRoll = currentRoll;
         zeroYaw = currentYaw;
+        syncAz = targetAz;
+        syncAlt = targetAlt;
+        calibrated = true;
+        lockState = false;
         const btn = document.querySelector('button[onclick="syncZero()"]');
         btn.style.borderColor = 'var(--success)';
         setTimeout(() => { btn.style.borderColor = 'var(--border-color)'; }, 500);
         updateReadouts();
+    }
+
+    function showNotCalibrated() {
+        const led = document.getElementById('statusLed');
+        led.className = 'led-dot flashing-red';
+        let msg = 'Connect sensor to begin';
+        if (isConnected) msg = hasData ? 'Not calibrated' : 'Waiting for sensor data...';
+        document.getElementById('statusText').innerText = msg;
+        document.getElementById('guidanceTitle').innerText = 'Handheld Operator Guidance';
+        document.getElementById('guidanceInstruction').innerText = 'Center the target in the eyepiece, then tap Sync / Zero';
     }
 
     function updateReadouts() {
@@ -714,11 +811,21 @@
         document.getElementById('valRoll').innerText = currentRoll.toFixed(1) + '°';
         document.getElementById('valYaw').innerText = currentYaw.toFixed(1) + '°';
 
-        let relPitch = currentPitch - zeroPitch;
-        let relYaw = currentYaw - zeroYaw;
+        if (!calibrated) {
+            document.getElementById('errAz').innerText = '--';
+            document.getElementById('errAlt').innerText = '--';
+            document.getElementById('errTotal').innerText = '--';
+            showNotCalibrated();
+            drawReticle(0, 0, 0, false);
+            return;
+        }
 
-        let azError = relYaw - targetAz;
-        let altError = relPitch - targetAlt;
+        // Where the scope points on the sky now, and how far that is from where the target is now
+        const scopeAz = norm360(syncAz + wrap180(currentYaw - zeroYaw));
+        const scopeAlt = syncAlt + (currentPitch - zeroPitch);
+
+        let azError = wrap180(scopeAz - targetAz);
+        let altError = scopeAlt - targetAlt;
         let totalOffset = Math.sqrt(azError * azError + altError * altError);
 
         document.getElementById('errAz').innerText = azError.toFixed(2) + '°';
@@ -726,7 +833,7 @@
         document.getElementById('errTotal').innerText = totalOffset.toFixed(2) + '°';
 
         updateLEDAndGuidance(totalOffset, azError, altError);
-        drawReticle(azError, altError, totalOffset);
+        drawReticle(azError, altError, totalOffset, true);
     }
 
     function updateGPS() {
@@ -752,55 +859,121 @@
         }
     }
 
-    function calculateEphemeris() {
-        const now = new Date();
-        const jd = (now.getTime() / 86400000) + 2440587.5;
-        const d = jd - 2451545.0;
+    // ===== SUN AND MOON POSITIONS =====
+    const DEG = Math.PI / 180, TWOPI = 2 * Math.PI;
 
+    // Greenwich mean sidereal time (radians)
+    function gmstRad(jd) {
+        const t = (jd - 2451545.0) / 36525;
+        let g = -6.2e-6 * t * t * t + 0.093104 * t * t + (876600 * 3600 + 8640184.812866) * t + 67310.54841;
+        g = (g * DEG / 240) % TWOPI;
+        return g < 0 ? g + TWOPI : g;
+    }
+
+    // Sun: unit vector in the equator-of-date frame
+    function sunUnit(jd) {
+        const n = jd - 2451545.0, L = (280.460 + 0.9856474 * n) % 360, g = ((357.528 + 0.9856003 * n) % 360) * DEG;
+        const lam = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * DEG, eps = (23.439 - 0.0000004 * n) * DEG;
+        return [Math.cos(lam), Math.cos(eps) * Math.sin(lam), Math.sin(eps) * Math.sin(lam)];
+    }
+
+    // Observer position (km) and local east / north / up unit vectors in the same frame
+    function observerFrame(latDeg, lngDeg, ms) {
+        const jd = ms / 86400000 + 2440587.5, th = gmstRad(jd) + lngDeg * DEG, la = latDeg * DEG;
+        const sl = Math.sin(la), cl = Math.cos(la), st = Math.sin(th), ct = Math.cos(th);
+        const e2 = 0.00669437999014, N = 6378.137 / Math.sqrt(1 - e2 * sl * sl);
+        return {
+            pos: [N * cl * ct, N * cl * st, N * (1 - e2) * sl],
+            east: [-st, ct, 0], north: [-sl * ct, -sl * st, cl], up: [cl * ct, cl * st, sl]
+        };
+    }
+
+    // Moon: Meeus, "Astronomical Algorithms" ch. 47 (accuracy about 10 arcseconds)
+    const MOON_LR = [  // D, M, M', F, longitude (1e-6 deg), distance (1e-3 km)
+        [0,0,1,0,6288774,-20905355],[2,0,-1,0,1274027,-3699111],[2,0,0,0,658314,-2955968],[0,0,2,0,213618,-569925],
+        [0,1,0,0,-185116,48888],[0,0,0,2,-114332,-3149],[2,0,-2,0,58793,246158],[2,-1,-1,0,57066,-152138],
+        [2,0,1,0,53322,-170733],[2,-1,0,0,45758,-204586],[0,1,-1,0,-40923,-129620],[1,0,0,0,-34720,108743],
+        [0,1,1,0,-30383,104755],[2,0,0,-2,15327,10321],[0,0,1,2,-12528,0],[0,0,1,-2,10980,79661],
+        [4,0,-1,0,10675,-34782],[0,0,3,0,10034,-23210],[4,0,-2,0,8548,-21636],[2,1,-1,0,-7888,24208],
+        [2,1,0,0,-6766,30824],[1,0,-1,0,-5163,-8379],[1,1,0,0,4987,-16675],[2,-1,1,0,4036,-12831],
+        [2,0,2,0,3994,-10445],[4,0,0,0,3861,-11650],[2,0,-3,0,3665,14403],[0,1,-2,0,-2689,-7003],
+        [2,0,-1,2,-2602,0],[2,-1,-2,0,2390,10056],[1,0,1,0,-2348,6322],[2,-2,0,0,2236,-9884],
+        [0,1,2,0,-2120,5751],[0,2,0,0,-2069,0],[2,-2,-1,0,2048,-4950],[2,0,1,-2,-1773,4130],
+        [2,0,0,2,-1595,0],[4,-1,-1,0,1215,-3958],[0,0,2,2,-1110,0],[3,0,-1,0,-892,3258],
+        [2,1,1,0,-810,2616],[4,-1,-2,0,759,-1897],[0,2,-1,0,-713,-2117],[2,2,-1,0,-700,2354],
+        [2,1,-2,0,691,0],[2,-1,0,-2,596,0],[4,0,1,0,549,-1423],[0,0,4,0,537,-1117],
+        [4,-1,0,0,520,-1571],[1,0,-2,0,-487,-1739],[2,1,0,-2,-399,0],[0,0,2,-2,-381,-4421],
+        [1,1,1,0,351,0],[3,0,-2,0,-340,0],[4,0,-3,0,330,0],[2,-1,2,0,327,0],
+        [0,2,1,0,-323,1165],[1,1,-1,0,299,0],[2,0,3,0,294,0],[2,0,-1,-2,0,8752]
+    ];
+    const MOON_B = [   // D, M, M', F, latitude (1e-6 deg)
+        [0,0,0,1,5128122],[0,0,1,1,280602],[0,0,1,-1,277693],[2,0,0,-1,173237],[2,0,-1,1,55413],[2,0,-1,-1,46271],
+        [2,0,0,1,32573],[0,0,2,1,17198],[2,0,1,-1,9266],[0,0,2,-1,8822],[2,-1,0,-1,8216],[2,0,-2,-1,4324],
+        [2,0,1,1,4200],[2,1,0,-1,-3359],[2,-1,-1,1,2463],[2,-1,0,1,2211],[2,-1,-1,-1,2065],[0,1,-1,-1,-1870],
+        [4,0,-1,-1,1828],[0,1,0,1,-1794],[0,0,0,3,-1749],[0,1,-1,1,-1565],[1,0,0,1,-1491],[0,1,1,1,-1475],
+        [0,1,1,-1,-1410],[0,1,0,-1,-1344],[1,0,0,-1,-1335],[0,0,3,1,1107],[4,0,0,-1,1021],[4,0,-1,1,833],
+        [0,0,1,-3,777],[4,0,-2,1,671],[2,0,0,-3,607],[2,0,2,-1,596],[2,-1,1,-1,491],[2,0,-2,1,-451],
+        [0,0,3,-1,439],[2,0,2,1,422],[2,0,-3,-1,421],[2,1,-1,1,-366],[2,1,0,1,-351],[4,0,0,1,331],
+        [2,-1,1,1,315],[2,-2,0,-1,302],[0,0,1,3,-283],[2,1,1,-1,-229],[1,1,0,-1,223],[1,1,0,1,223],
+        [0,1,-2,-1,-220],[2,1,-1,-1,-220],[1,0,1,1,-185],[2,-1,-2,-1,181],[0,1,2,1,-177],[4,0,-2,-1,176],
+        [4,-1,-1,-1,166],[1,0,1,-1,-164],[4,0,1,-1,132],[1,0,-1,-1,-119],[4,-1,0,-1,115],[2,-2,0,1,107]
+    ];
+
+    // Geocentric Moon: unit vector (equator-of-date frame) and distance (km). jd = Julian date (UT).
+    function moonGeocentric(jd) {
+        const T = (jd + 69.2 / 86400 - 2451545.0) / 36525;
+        const T2 = T * T, T3 = T2 * T, T4 = T3 * T;
+        const rad = Math.PI / 180, mod = (x) => ((x % 360) + 360) % 360;
+        const Lp = mod(218.3164477 + 481267.88123421 * T - 0.0015786 * T2 + T3 / 538841 - T4 / 65194000);
+        const D = mod(297.8501921 + 445267.1114034 * T - 0.0018819 * T2 + T3 / 545868 - T4 / 113065000) * rad;
+        const M = mod(357.5291092 + 35999.0502909 * T - 0.0001536 * T2 + T3 / 24490000) * rad;
+        const Mp = mod(134.9633964 + 477198.8675055 * T + 0.0087414 * T2 + T3 / 69699 - T4 / 14712000) * rad;
+        const F = mod(93.2720950 + 483202.0175233 * T - 0.0036539 * T2 - T3 / 3526000 + T4 / 863310000) * rad;
+        const A1 = mod(119.75 + 131.849 * T) * rad, A2 = mod(53.09 + 479264.290 * T) * rad, A3 = mod(313.45 + 481266.484 * T) * rad;
+        const E = 1 - 0.002516 * T - 0.0000074 * T2, Lr = Lp * rad;
+        const ef = (m) => { const a = Math.abs(m); return a === 1 ? E : (a === 2 ? E * E : 1); };
+        let sl = 0, sr = 0, sb = 0;
+        for (const t of MOON_LR) { const arg = t[0] * D + t[1] * M + t[2] * Mp + t[3] * F, e = ef(t[1]); sl += t[4] * e * Math.sin(arg); sr += t[5] * e * Math.cos(arg); }
+        for (const t of MOON_B) { const arg = t[0] * D + t[1] * M + t[2] * Mp + t[3] * F; sb += t[4] * ef(t[1]) * Math.sin(arg); }
+        sl += 3958 * Math.sin(A1) + 1962 * Math.sin(Lr - F) + 318 * Math.sin(A2);
+        sb += -2235 * Math.sin(Lr) + 382 * Math.sin(A3) + 175 * Math.sin(A1 - F) + 175 * Math.sin(A1 + F) + 127 * Math.sin(Lr - Mp) - 115 * Math.sin(Lr + Mp);
+        const lam = (Lp + sl / 1e6) * rad, bet = (sb / 1e6) * rad, dist = 385000.56 + sr / 1000;
+        const eps = (23.4392911 - 0.0130042 * T) * rad;
+        const x = Math.cos(bet) * Math.cos(lam), y = Math.cos(bet) * Math.sin(lam), z = Math.sin(bet);
+        return { unit: [x, y * Math.cos(eps) - z * Math.sin(eps), y * Math.sin(eps) + z * Math.cos(eps)], distKm: dist };
+    }
+
+    // Altitude / azimuth (degrees, azimuth from north through east) of the Sun or Moon as seen from the observer.
+    // The Moon is corrected for the observer's position on Earth (parallax, up to about 1 degree).
+    function bodyAltAz(kind, latDeg, lngDeg, ms) {
+        const f = observerFrame(latDeg, lngDeg, ms), jd = ms / 86400000 + 2440587.5;
+        let v;
+        if (kind === 'sun') {
+            v = sunUnit(jd);
+        } else {
+            const m = moonGeocentric(jd);
+            const dx = m.unit[0] * m.distKm - f.pos[0], dy = m.unit[1] * m.distKm - f.pos[1], dz = m.unit[2] * m.distKm - f.pos[2];
+            const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            v = [dx / d, dy / d, dz / d];
+        }
+        const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+        let az = Math.atan2(dot(v, f.east), dot(v, f.north)) / DEG;
+        if (az < 0) az += 360;
+        return { alt: Math.asin(dot(v, f.up)) / DEG, az: az };
+    }
+
+    function calculateEphemeris() {
         if (currentMode === 'sun') {
             document.getElementById('targetNameLabel').innerText = 'Target Azimuth:';
             document.getElementById('targetAltLabel').innerText = 'Target Altitude:';
-            
-            let g = (357.529 + 0.98560028 * d) % 360;
-            let q = (280.459 + 0.98564736 * d) % 360;
-            let l = (q + 1.915 * Math.sin(g * Math.PI/180) + 0.020 * Math.sin(2 * g * Math.PI/180)) % 360;
-            let e = 23.439 - 0.0000004 * d;
-            
-            let sinDecl = Math.sin(e * Math.PI/180) * Math.sin(l * Math.PI/180);
-            let decl = Math.asin(sinDecl) * 180 / Math.PI;
-            
-            let gmst = (280.46061837 + 360.98564736629 * d) % 360;
-            let lmst = (gmst + observerLon) % 360;
-            let ha = (lmst - (q - 1.915 * Math.sin(g * Math.PI/180))) % 360;
-            
-            let latRad = observerLat * Math.PI / 180;
-            let declRad = decl * Math.PI / 180;
-            let haRad = ha * Math.PI / 180;
-            
-            let alt = Math.asin(Math.sin(latRad) * Math.sin(declRad) + Math.cos(latRad) * Math.cos(declRad) * Math.cos(haRad)) * 180 / Math.PI;
-            let az = Math.atan2(-Math.sin(haRad), Math.tan(declRad) * Math.cos(latRad) - Math.sin(latRad) * Math.cos(haRad)) * 180 / Math.PI + 180;
-            
-            targetAz = az;
-            targetAlt = Math.max(0, alt);
         } else {
             document.getElementById('targetNameLabel').innerText = 'Moon Azimuth:';
             document.getElementById('targetAltLabel').innerText = 'Moon Altitude:';
-            
-            let lMoon = (218.316 + 13.176396 * d) % 360;
-            let bMoon = 5.128 * Math.sin((93.3 + 13.029 * d) * Math.PI/180);
-            let latRad = observerLat * Math.PI / 180;
-            let declRad = bMoon * Math.PI / 180;
-            let gmst = (280.46061837 + 360.98564736629 * d) % 360;
-            let lmst = (gmst + observerLon) % 360;
-            let ha = (lmst - lMoon) % 360;
-            let haRad = ha * Math.PI / 180;
-
-            let alt = Math.asin(Math.sin(latRad) * Math.sin(declRad) + Math.cos(latRad) * Math.cos(declRad) * Math.cos(haRad)) * 180 / Math.PI;
-            let az = Math.atan2(-Math.sin(haRad), Math.tan(declRad) * Math.cos(latRad) - Math.sin(latRad) * Math.cos(haRad)) * 180 / Math.PI + 180;
-
-            targetAz = az;
-            targetAlt = Math.max(0, alt);
         }
+
+        const aa = bodyAltAz(currentMode, observerLat, observerLon, Date.now());
+        targetAz = aa.az;
+        targetAlt = aa.alt;
 
         document.getElementById('valTargetAz').innerText = targetAz.toFixed(2) + '°';
         document.getElementById('valTargetAlt').innerText = targetAlt.toFixed(2) + '°';
@@ -811,34 +984,49 @@
         const led = document.getElementById('statusLed');
         const statusText = document.getElementById('statusText');
         const instruction = document.getElementById('guidanceInstruction');
+        const title = document.getElementById('guidanceTitle');
+        const lim = fovLimits();
 
-        evaluateFeedback(totalOffset);
+        evaluateFeedback(totalOffset, lim);
 
-        if (totalOffset <= 0.5) {
+        if (totalOffset <= lim.lock) {
             led.className = 'led-dot locked';
             led.style.background = currentMode === 'sun' ? 'var(--accent-sun)' : 'var(--accent-moon)';
             statusText.innerText = 'Target Centered & Locked!';
+            title.innerText = 'Handheld Operator Guidance';
             instruction.innerText = '✨ Target acquired in eyepiece view!';
+            return;
+        }
+
+        let dirParts = [];
+        if (altError > lim.lock) dirParts.push('DOWN');
+        else if (altError < -lim.lock) dirParts.push('UP');
+
+        if (azError > lim.lock) dirParts.push('LEFT');
+        else if (azError < -lim.lock) dirParts.push('RIGHT');
+
+        if (totalOffset >= lim.crit) {
+            led.className = 'led-dot flashing-red';
+            statusText.innerText = totalOffset >= lim.r ? 'Target left the field of view!' : 'Near edge of view - realign now!';
+            title.innerText = '⚠ REALIGN NOW';
+        } else if (totalOffset >= lim.warn) {
+            led.className = 'led-dot flashing-amber';
+            statusText.innerText = 'Drifting - realign soon';
+            title.innerText = '⚠ Realign Soon';
         } else {
             led.className = 'led-dot flashing-red';
             statusText.innerText = 'Aligning Scope...';
+            title.innerText = 'Handheld Operator Guidance';
+        }
 
-            let dirParts = [];
-            if (altError > 0.5) dirParts.push('DOWN');
-            else if (altError < -0.5) dirParts.push('UP');
-
-            if (azError > 0.5) dirParts.push('LEFT');
-            else if (azError < -0.5) dirParts.push('RIGHT');
-
-            if (dirParts.length > 0) {
-                instruction.innerText = `Nudge front opening: ${dirParts.join(' & ')}`;
-            } else {
-                instruction.innerText = 'Fine-tuning alignment...';
-            }
+        if (dirParts.length > 0) {
+            instruction.innerText = `Nudge front opening: ${dirParts.join(' & ')}`;
+        } else {
+            instruction.innerText = 'Fine-tuning alignment...';
         }
     }
 
-    function drawReticle(azError, altError, totalOffset) {
+    function drawReticle(azError, altError, totalOffset, show) {
         const canvas = document.getElementById('reticleCanvas');
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
@@ -879,6 +1067,8 @@
         ctx.beginPath();
         ctx.arc(cx, cy, 6, 0, Math.PI * 2);
         ctx.stroke();
+
+        if (!show) return;
 
         let px = cx + (azError / maxScaleDeg) * radiusLimit;
         let py = cy - (altError / maxScaleDeg) * radiusLimit;
@@ -925,7 +1115,7 @@
 
     window.onload = () => {
         updateGPS();
-        setInterval(calculateEphemeris, 30000);
+        setInterval(calculateEphemeris, 1000);
     };
 </script>
 </body>
