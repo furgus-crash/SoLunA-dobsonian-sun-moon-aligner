@@ -264,6 +264,36 @@
             text-align: right;
         }
 
+        .fov-calc {
+            background: transparent;
+            border: none;
+            border-top: 1px solid var(--border-color);
+            border-radius: 0;
+            padding: 10px 0 0 0;
+        }
+
+        .fov-calc summary {
+            font-size: 12px;
+            color: var(--accent-moon);
+        }
+
+        .fov-calc-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-top: 10px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .fov-calc-result {
+            margin-top: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
         .sensor-readouts {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -426,13 +456,32 @@
             <div style="font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Eyepiece True FOV (°)</div>
             <input type="number" id="fovInput" class="fov-input" value="1.0" min="0.1" max="5" step="0.1" inputmode="decimal" oninput="updateReadouts()">
         </div>
+        <details class="fov-calc">
+            <summary>Don't know it? Calculate it for me</summary>
+            <div class="fov-calc-row">
+                <span>Telescope focal length (mm)</span>
+                <input type="number" id="scopeFLInput" class="fov-input" min="1" step="1" inputmode="decimal" placeholder="e.g. 1200" oninput="calcFOV()">
+            </div>
+            <div class="fov-calc-row">
+                <span>Eyepiece focal length (mm)</span>
+                <input type="number" id="epFLInput" class="fov-input" min="1" step="0.1" inputmode="decimal" placeholder="e.g. 25" oninput="calcFOV()">
+            </div>
+            <div class="fov-calc-row">
+                <span>Eyepiece apparent field (°)</span>
+                <input type="number" id="epAfovInput" class="fov-input" value="50" min="1" max="120" step="1" inputmode="decimal" oninput="calcFOV()">
+            </div>
+            <div class="fov-calc-row" style="font-size: 11px;">
+                <span>Telescope focal length = aperture (mm) × f-ratio. A 10" is 254 mm. Plössl eyepieces are usually 50°.</span>
+            </div>
+            <div class="fov-calc-result" id="fovCalcResult">Enter your telescope and eyepiece focal lengths.</div>
+        </details>
     </div>
 
     <!-- Audio & Haptic Feedback Control -->
     <div class="control-card" style="padding: 12px 16px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div style="font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Lock / Drift Tone</div>
-            <button class="action-btn" id="audioToggleBtn" onclick="toggleAudioFeedback()" style="padding: 8px 14px; font-size: 12px; width: auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+            <div style="flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Lock / Drift Tone</div>
+            <button class="action-btn" id="audioToggleBtn" onclick="toggleAudioFeedback()" style="flex: 0 0 auto; width: auto; padding: 6px 10px; font-size: 12px; white-space: nowrap;">
                 🔊 Tone: OFF
             </button>
         </div>
@@ -483,8 +532,8 @@
             <p><strong>1. Hardware Setup:</strong> Mount your WitMotion WT901BLE67 sensor firmly on the upper tube assembly (near the focuser) of your Dobsonian telescope.</p>
             <p><strong>2. Bluetooth Pairing:</strong> Power on the sensor, tap <strong>Connect BLE</strong>, and select your sensor in the device list.</p>
             <p><strong>3. Target Selection:</strong> Choose <strong>☀️ Sun</strong> or <strong>🌙 Moon</strong> using the top toggle.</p>
-            <p><strong>4. Optical Calibration:</strong> Point your telescope directly at the target using a solar finder or shadow projection, center it precisely in the eyepiece, and tap <strong>Sync / Zero</strong>. This records where the target really is and what the sensor reads at that moment. From then on the app follows the target's movement across the sky for you. Sync again any time you re-center it by eye.</p>
-            <p><strong>5. Field of View:</strong> Enter your eyepiece's true field of view in degrees (apparent field of view divided by magnification). The status changes to "Realign Soon" when the target has drifted about 60% of the way to the edge of the view, and to "REALIGN NOW" at about 85%.</p>
+            <p><strong>4. Optical Calibration:</strong> Point your telescope directly at the target using a solar finder or shadow projection, center it precisely in the eyepiece, and tap <strong>Sync / Zero</strong>. This records where the target really is and what the sensor reads at that moment. From then on the app follows the target's movement across the sky for you. You normally do this only once per session. Sync again only if the sensor reconnects, gets bumped, or the app and the eyepiece clearly disagree.</p>
+            <p><strong>5. Field of View:</strong> Enter your eyepiece's true field of view in degrees (apparent field of view divided by magnification). If you don't know it, open "Calculate it for me" under the box and enter your telescope's focal length, your eyepiece's focal length (the mm number printed on it) and the eyepiece's apparent field of view (about 50° for a basic Plössl). The app works out the true field and fills in the box for you. The status changes to "Realign Soon" when the target has drifted about 60% of the way to the edge of the view, and to "REALIGN NOW" at about 85%.</p>
             <p><strong>6. Handheld Guidance:</strong> Hold your phone upright facing the target. Follow the on-screen directional arrow and text prompts to nudge the front opening of the scope. When locked (within 30% of the field radius, and never more than 0.5°), the indicator turns solid and chimes.</p>
         </div>
     </details>
@@ -580,17 +629,18 @@
         if (!audioEnabled || !audioCtx) return;
         try {
             const now = audioCtx.currentTime;
-            [523.25, 659.25, 783.99].forEach((freq, i) => {
+            [0, 1, 2].forEach((i) => {
+                const t = now + i * 0.16;
                 let osc = audioCtx.createOscillator();
                 let gain = audioCtx.createGain();
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(freq, now + i * 0.08);
-                gain.gain.setValueAtTime(0.15, now + i * 0.08);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.2);
+                osc.frequency.setValueAtTime(880, t);
+                gain.gain.setValueAtTime(0.25, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
                 osc.connect(gain);
                 gain.connect(audioCtx.destination);
-                osc.start(now + i * 0.08);
-                osc.stop(now + i * 0.08 + 0.25);
+                osc.start(t);
+                osc.stop(t + 0.1);
             });
         } catch(e){}
         triggerHaptics([60, 40, 60, 40, 60]);
@@ -612,6 +662,23 @@
             osc.stop(now + 0.3);
         } catch(e){}
         triggerHaptics([150]);
+    }
+
+    // Optional helper: work out the true field of view from focal lengths and the eyepiece's apparent field
+    function calcFOV() {
+        const scopeFL = parseFloat(document.getElementById('scopeFLInput').value);
+        const epFL = parseFloat(document.getElementById('epFLInput').value);
+        const afov = parseFloat(document.getElementById('epAfovInput').value);
+        const out = document.getElementById('fovCalcResult');
+        if (!(scopeFL > 0) || !(epFL > 0) || !(afov > 0)) {
+            out.innerText = 'Enter your telescope and eyepiece focal lengths.';
+            return;
+        }
+        const mag = scopeFL / epFL;
+        const tfov = afov / mag;
+        document.getElementById('fovInput').value = tfov.toFixed(2);
+        out.innerText = `Magnification ${mag.toFixed(0)}× gives a true field of ${tfov.toFixed(2)}° (entered in the box above).`;
+        updateReadouts();
     }
 
     // Limits (degrees of offset) based on the eyepiece true field of view
